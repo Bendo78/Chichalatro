@@ -47,7 +47,7 @@
   const levelOf = id => st.levels[id] || 1;
   function handValue(h) { const L = levelOf(h.id); return { chips: h.c + (L - 1) * h.lc, mult: h.m + (L - 1) * h.lm }; }
   function targetFor(noche, t) {
-    const mul = t === 2 && st.stake >= 4 ? 2.5 : TANDAS[t].mul;
+    const mul = t === 2 && st.stake >= 5 ? 2.5 : TANDAS[t].mul;
     const v = BASE_TARGET[Math.min(noche, NOCHES) - 1] * mul * (st.stake >= 2 ? 1.25 : 1);
     return Math.round(v / 50) * 50;
   }
@@ -55,9 +55,40 @@
   const isBoss = () => st.tanda === 2;
   function debuffed(card) {
     if (!isBoss()) return false;
-    if (st.boss.id === 'suit') return card.suit === st.boss.suit;
-    if (st.boss.id === 'face') return Poker.isFace(card);
+    if (st.boss.id === 'suit') return Poker.suitIs(card, st.boss.suit);
+    if (st.boss.id === 'face') return !Poker.isStone(card) && Poker.isFace(card);
     return false;
+  }
+
+  // ---------- shop items: helpers ----------
+  const usedSlots = () => st.supers.filter(s => s.ed !== 'negatif').length;
+  const roomForSuper = sc => (sc && sc.ed === 'negatif') || usedSlots() < st.maxSupers;
+  const priceOf = base => Math.max(1, Math.round(base * (st.vouchers.has('codepromo') ? .75 : 1)) + (st.stake >= 4 ? 1 : 0));
+  function makeSuper(c, ed) {
+    const sc = Supers.make(c, seriesOf(c));
+    if (ed === undefined) ed = Items.rollEdition(st.edMul);
+    if (ed) { sc.ed = ed; sc.price += Items.EDITIONS[ed].price; }
+    if (ed) Meta.unlock('ed1');
+    return sc;
+  }
+  let itemUid = 0;
+  const newVoyance = id => ({ uid: 'it' + (++itemUid), kind: 'voyance', id: id || rnd(Items.VOYANCE).id, price: 3 });
+  const newVinyl = id => ({ uid: 'it' + (++itemUid), kind: 'vinyl', id: id || rnd(Poker.HANDS).id, price: 3 });
+  const itemName = it => it.kind === 'voyance' ? Items.VOY[it.id].n : 'Vinyle · ' + Poker.HAND_BY_ID[it.id].n;
+  const itemDesc = it => it.kind === 'voyance' ? Items.VOY[it.id].d : (() => { const h = Poker.HAND_BY_ID[it.id]; return `${h.n} monte d'un niveau (+${h.lc} Jetons, +${h.lm} Mult)`; })();
+  const itemArt = it => it.kind === 'voyance' ? Items.voyanceArt(Items.VOY[it.id]) : Items.vinylArt(Poker.HAND_BY_ID[it.id]);
+  function applyVoucher(id) {
+    st.vouchers.add(id);
+    if (id === 'bras') st.handsBase++;
+    if (id === 'poubelle') st.discardsBase++;
+    if (id === 'grandemain') st.handSizeBase++;
+    if (id === 'vip') st.maxSupers++;
+    if (id === 'sac') st.maxCons++;
+    if (id === 'cochon') st.interestMax += 5;
+    if (id === 'disquaire') st.vinMul = 2;
+    if (id === 'cristal') st.voyMul = 2;
+    if (id === 'paillettes') st.edMul *= 2;
+    if (id === 'etal') st.shopSlots++;
   }
 
   // ---------- small UI helpers ----------
@@ -131,14 +162,16 @@
   function superHTML(sc, o) {
     o = o || {};
     const c = sc.card, back = DB.backs[c.s], tier = Supers.TIERS[sc.tier], ser = seriesOf(c);
-    return `<div class="sc ${tier.cls} fam-${sc.fam}${o.flip ? ' flip' : ''}${o.isNew ? ' new' : ''}" data-uid="${sc.uid}" tabindex="0" role="button" aria-label="${esc(c.n)} : ${esc(Supers.liveText(sc))}">
+    const E = sc.ed && Items.EDITIONS[sc.ed];
+    return `<div class="sc ${tier.cls} fam-${sc.fam}${E ? ' ed-' + sc.ed : ''}${o.flip ? ' flip' : ''}${o.isNew ? ' new' : ''}" data-uid="${sc.uid}" tabindex="0" role="button" aria-label="${esc(c.n)} : ${esc(Supers.liveText(sc))}${E ? ' — ' + E.n + ' : ' + E.d : ''}">
       <div class="sway" style="--d:${(-Math.random() * 4).toFixed(2)}s"><div class="sc-in">
-        <div class="sc-f">${media(c)}<span class="sc-tier">${tier.n}</span><span class="sc-name">${esc(c.n)}</span><i class="glare"></i></div>
+        <div class="sc-f">${media(c)}<i class="edfx"></i><span class="sc-tier">${tier.n}</span>${E ? `<span class="sc-ed">${E.n}</span>` : ''}<span class="sc-name">${esc(c.n)}</span><i class="glare"></i></div>
         <div class="sc-b"${back ? ` style="--back:url('${esc(back)}')"` : ''}>
           <span class="sc-bn">${esc(c.n)}</span>
           ${c.an ? `<span class="sc-atk">${esc(c.an)}</span>` : ''}
           ${c.f ? `<p class="sc-desc">« ${esc(c.f)} »</p>` : ''}
           <span class="sc-eff">${richEffect(Supers.liveText(sc))}</span>
+          ${E ? `<span class="sc-edd">${E.n} : ${richEffect(E.d)}</span>` : ''}
           <span class="sc-meta">${esc(sc.famName)} · ${tier.n}${ser ? ' · ' + esc(ser.code || ser.n) : ''}</span>
           ${o.actions || ''}
         </div>
@@ -169,7 +202,8 @@
     hideTip();
     const t = document.createElement('div'), tier = Supers.TIERS[sc.tier];
     t.className = 'tip ' + tier.cls; t.id = 'tip';
-    t.innerHTML = `<b>${esc(sc.card.n)}</b><span class="eff">${richEffect(Supers.liveText(sc))}</span>${sc.card.f ? `<em>« ${esc(sc.card.f)} »</em>` : ''}<small><i>${tier.n}</i> ${esc(sc.famName)}</small>`;
+    const E = sc.ed && Items.EDITIONS[sc.ed];
+    t.innerHTML = `<b>${esc(sc.card.n)}</b><span class="eff">${richEffect(Supers.liveText(sc))}</span>${E ? `<span class="edt">${E.n} : ${richEffect(E.d)}</span>` : ''}${sc.card.f ? `<em>« ${esc(sc.card.f)} »</em>` : ''}<small><i>${tier.n}</i> ${esc(sc.famName)}</small>`;
     document.body.appendChild(t);
     const r = el.getBoundingClientRect(), tr = t.getBoundingClientRect();
     let x = r.left + r.width / 2 - tr.width / 2, y = r.bottom + 10;
@@ -344,9 +378,18 @@
       deck, stake, noche: 1, tanda: 0, round: 0, soles: 4, supers: [], maxSupers: 5,
       handSizeBase: 8, handsBase: 4, discardsBase: 3, interestMax: 5,
       levels: {}, handCounts: {}, cards: Poker.newDeck(), bossBag: [], sort: 'rank', rerollCost: 5,
-      hand: [], draw: [], sel: new Set(), busy: false, phase: 'select', score: 0, target: 0, bestHand: 0, recruited: 0
+      hand: [], draw: [], sel: new Set(), busy: false, phase: 'select', score: 0, target: 0, bestHand: 0, recruited: 0,
+      consumables: [], maxCons: 2, vouchers: new Set(), shopSlots: 3, edMul: 1, voyMul: 1, vinMul: 1, voucherOffer: null
     };
     if (deck.id === 'fiesta') st.discardsBase++;
+    if (deck.id === 'damier') st.cards = st.cards.map(c => Object.assign(c, { suit: c.suit === 'K' ? 'C' : c.suit === 'T' ? 'P' : c.suit }));
+    if (deck.id === 'vide') st.cards = st.cards.filter(c => !Poker.isFace(c));
+    if (deck.id === 'bijou') Poker.shuffle(st.cards.slice()).slice(0, 12).forEach(c => c.enh = rnd(Items.ENH_IDS));
+    if (deck.id === 'peintre') { st.handSizeBase += 2; st.maxSupers--; }
+    if (deck.id === 'paillettes') st.edMul = 3;
+    if (deck.id === 'voyant') { applyVoucher('cristal'); st.consumables.push(newVoyance()); }
+    if (deck.id === 'disco') { applyVoucher('disquaire'); st.consumables.push(newVinyl(), newVinyl()); }
+    if (deck.id === 'ticket') Poker.shuffle(Items.VOUCHERS.slice()).slice(0, 2).forEach(v => applyVoucher(v.id));
     if (deck.id === 'soles') { st.soles = 14; st.interestMax = 7; }
     if (deck.id === 'neon') st.maxSupers = 6;
     if (deck.id === 'cumbia') ['pair', 'two', 'three'].forEach(h => st.levels[h] = 2);
@@ -357,7 +400,8 @@
       if (legs.length) { const c = rnd(legs); st.supers.push(Supers.make(c, seriesOf(c))); }
     }
     if (stake >= 3) st.discardsBase--;
-    if (stake >= 5) st.handsBase--;
+    if (stake >= 6) st.interestMax = Math.min(st.interestMax, 3);
+    if (stake >= 7) st.handsBase--;
     st.hands = st.handsBase; st.discards = st.discardsBase;
     Meta.add('runs');
     pickBoss();
@@ -381,7 +425,7 @@
       <button class="combo-tab" id="combo-tab" aria-label="Voir les combos"><span>COMBOS</span></button>
       <div class="drawer" id="drawer"></div>
       <section class="stage" id="stage">
-        <div class="topbar"><div class="supers" id="supers"></div></div>
+        <div class="topbar"><div class="supers" id="supers"></div><div class="cons" id="cons"></div></div>
         <div class="playzone" id="playzone"><div class="handname" id="handname"></div></div>
         <div class="handzone" id="handzone"><div class="deck" id="deck"><div class="deckstack">${Art.cardBack(st.deck.color)}</div><span id="deckn"></span></div></div>
         <div class="ctrl" id="ctrl">
@@ -401,6 +445,116 @@
     sizeStage();
     renderSide();
     renderSupers();
+    renderCons();
+  }
+
+  // ---------- consumables (Voyance and Vinyles) ----------
+  function renderCons(newUid) {
+    const box = $('#cons'); if (!box) return;
+    box.innerHTML = `<div class="cl">${st.consumables.map(it => `<div class="ci${it.uid === newUid ? ' new' : ''}" data-uid="${it.uid}" tabindex="0" role="button" aria-label="${esc(itemName(it))} : ${esc(itemDesc(it))}">
+        ${itemArt(it)}
+        <div class="ci-pop"><b>${esc(itemName(it))}</b><span>${esc(itemDesc(it))}</span>
+          <span class="ci-act"><button class="btn sm blue" data-use="${it.uid}">Utiliser</button><button class="btn sm orange" data-csell="${it.uid}">Vendre ${Math.max(1, Math.floor(it.price / 2))} €</button></span></div>
+      </div>`).join('')}${Array.from({ length: Math.max(0, st.maxCons - st.consumables.length) }, () => '<span class="cslot"></span>').join('')}</div>
+      <span class="cnt">${st.consumables.length}/${st.maxCons}</span>`;
+    box.querySelectorAll('.ci').forEach(el => {
+      el.addEventListener('click', e => {
+        if (e.target.closest('button')) return;
+        const on = !el.classList.contains('open');
+        box.querySelectorAll('.ci.open').forEach(x => x.classList.remove('open'));
+        el.classList.toggle('open', on);
+        Sfx.play('flip');
+      });
+    });
+    box.querySelectorAll('[data-use]').forEach(b => b.onclick = () => useItem(st.consumables.find(i => i.uid === b.dataset.use)));
+    box.querySelectorAll('[data-csell]').forEach(b => b.onclick = () => {
+      const i = st.consumables.findIndex(x => x.uid === b.dataset.csell);
+      if (i < 0 || st.busy) return;
+      const it = st.consumables.splice(i, 1)[0];
+      setSoles(st.soles + Math.max(1, Math.floor(it.price / 2)));
+      Sfx.play('sell'); renderCons();
+    });
+  }
+
+  // Context given to Voyance effects. targets = selected cards.
+  function voyCtx(targets, onCardChanged) {
+    return {
+      st, targets,
+      setEnh: (c, id) => { c.enh = id; onCardChanged(c); },
+      setSuit: (c, s) => { c.suit = s; onCardChanged(c); },
+      rankUp: c => { if (Poker.isStone(c)) return; const i = Poker.RANKS.indexOf(c.rank); const ni = (i + 1) % Poker.RANKS.length; c.rank = Poker.RANKS[ni]; c.v = ni + 2; onCardChanged(c); },
+      copy: (from, to) => { to.rank = from.rank; to.v = from.v; to.suit = from.suit; to.enh = from.enh; onCardChanged(to); },
+      destroy: cards => {
+        cards.forEach(c => { st.cards = st.cards.filter(x => x !== c); st.hand = st.hand.filter(x => x !== c); st.draw = (st.draw || []).filter(x => x !== c); });
+        onCardChanged(null, cards);
+      },
+      money: n => { setSoles(st.soles + n); Sfx.play('money'); },
+      newSuper: () => {
+        const pool = Unlocks.open();
+        const c = Supers.rollCard(pool.length ? pool : DB.cards, new Set(st.supers.map(s => s.card.id)));
+        const sc = makeSuper(c, null);
+        st.supers.push(sc); renderSupers(sc.uid);
+      },
+      newVinyl: () => { if (st.consumables.length < st.maxCons) { st.consumables.push(newVinyl()); renderCons(); } },
+      wheel: () => {
+        const list = st.supers.filter(s => !s.ed);
+        if (Math.random() < .25 && list.length) {
+          const sc = rnd(list), ed = rnd(['neon', 'holo', 'arc']);
+          sc.ed = ed; sc.price += Items.EDITIONS[ed].price; Meta.unlock('ed1');
+          renderSupers(sc.uid); toast(`${sc.card.n} devient ${Items.EDITIONS[ed].n} !`); Sfx.play('achieve');
+        } else { toast('Raté… la roue tourne.'); Sfx.play('deselect'); }
+      }
+    };
+  }
+  // Checks if an item can be used with the current selection. Returns an error message or ''.
+  function itemBlocked(it, targets) {
+    if (it.kind === 'vinyl') return '';
+    const v = Items.VOY[it.id];
+    if (v.can && !v.can({ st })) return 'Impossible pour l\'instant (pas de place ?)';
+    if (!v.max) return '';
+    const min = v.min || 1;
+    if (targets.length < min || targets.length > v.max) return min === v.max ? `Sélectionne ${v.max} carte${v.max > 1 ? 's' : ''} dans ta main` : `Sélectionne de ${min} à ${v.max} cartes dans ta main`;
+    return '';
+  }
+  function levelUp(hid) {
+    st.levels[hid] = levelOf(hid) + 1;
+    Meta.add('cumbias');
+    if (levelOf(hid) >= 4) Meta.unlock('cumbia4');
+    toast(`${Poker.HAND_BY_ID[hid].n} passe au niveau ${levelOf(hid)}`);
+    Sfx.play('level');
+  }
+  function useItem(it) {
+    if (!it || st.busy) return;
+    const v = it.kind === 'voyance' ? Items.VOY[it.id] : null;
+    const needsCards = v && v.max > 0;
+    if (needsCards && st.phase !== 'play') { toast('Utilise cette carte pendant une manche, sur des cartes de ta main.'); return; }
+    const targets = needsCards ? selected() : [];
+    const err = itemBlocked(it, targets);
+    if (err) { toast(err); Sfx.play('deselect'); return; }
+    st.consumables = st.consumables.filter(x => x !== it);
+    if (it.kind === 'vinyl') levelUp(it.id);
+    else {
+      v.apply(voyCtx(targets, (c, gone) => {
+        if (gone) { flyAway(gone); st.sel.clear(); layoutHand(); updateDeckCount(); return; }
+        refreshCard(c);
+      }));
+      Meta.add('voyUsed');
+      if (Meta.data.stats.voyUsed >= 5) Meta.unlock('voy5');
+      if (st.cards.filter(c => c.enh).length >= 10) Meta.unlock('enh10');
+      Sfx.play('achieve');
+    }
+    if (it.kind === 'vinyl' && Meta.data.stats.cumbias >= 5) Meta.unlock('vin5');
+    renderCons();
+    if (st.phase === 'play') { st.sel.clear(); layoutHand(); preview(); }
+  }
+  // Redraw a playing card after it changed (enhancement, suit, rank).
+  function refreshCard(c) {
+    const el = cardEls.get(c.uid);
+    if (!el) return;
+    el.className = el.className.replace(/\s?enh-\w+/g, '') + (c.enh ? ' enh-' + c.enh : '');
+    el.classList.remove('s-C', 's-K', 's-T', 's-P'); el.classList.add('s-' + c.suit);
+    el.querySelector('.face').innerHTML = Art.cardFace(c);
+    bump(el);
   }
 
   function sizeStage() {
@@ -508,7 +662,7 @@
 
   // ---------- tanda choice ----------
   function selectPhase() {
-    st.phase = 'select';
+    st.phase = 'select'; st.busy = false;
     Bg.set('table');
     showPlay(false);
     renderSide();
@@ -570,7 +724,7 @@
     let el = cardEls.get(card.uid);
     if (el) return el;
     el = document.createElement('div');
-    el.className = 'pc s-' + card.suit + (debuffed(card) ? ' off' : '');
+    el.className = 'pc s-' + card.suit + (card.enh ? ' enh-' + card.enh : '') + (debuffed(card) ? ' off' : '');
     el.dataset.uid = card.uid;
     el.innerHTML = `<div class="sway" style="--d:${(-Math.random() * 3).toFixed(2)}s"><div class="c3d"><div class="face">${Art.cardFace(card)}</div><div class="bk">${Art.cardBack(st.deck.color)}</div></div></div>`;
     el.addEventListener('click', () => toggleSel(card));
@@ -717,12 +871,34 @@
       const times = 1 + st.supers.reduce((n, sc) => n + (sc.retrigger ? sc.retrigger(card, i, ctx, sc) : 0), 0);
       for (let t = 0; t < times; t++) {
         if (t > 0) { pop(el, 'Encore !', 'again'); Sfx.play('again'); await wait(300); }
-        apply({ chips: Poker.chipsOf(card) }, el);
+        apply({ chips: Poker.isStone(card) ? 50 : Poker.chipsOf(card) }, el);
         await wait(330);
-        for (const sc of st.supers) if (sc.perCard && apply(sc.perCard(card, ctx, sc), scEl(sc))) await wait(330);
+        // playing card mutations
+        const e = card.enh;
+        if (e === 'bonus') { apply({ chips: 30 }, el); await wait(260); }
+        if (e === 'piment') { apply({ mult: 4 }, el); await wait(260); }
+        if (e === 'verre') { apply({ xmult: 2 }, el); await wait(300); }
+        if (e === 'chance') {
+          let hit = false;
+          if (Math.random() < 1 / 5) { apply({ mult: 20 }, el); hit = true; await wait(260); }
+          if (Math.random() < 1 / 15) { apply({ money: 20 }, el); hit = true; await wait(260); }
+          if (!hit) { pop(el, 'Pas de chance', 'off'); await wait(200); }
+        }
+        if (!Poker.isStone(card)) for (const sc of st.supers) if (sc.perCard && apply(sc.perCard(card, ctx, sc), scEl(sc))) await wait(330);
       }
     }
-    for (const sc of st.supers) if (sc.afterHand && apply(sc.afterHand(ctx, sc), scEl(sc))) await wait(420);
+    // cards held in hand: Acier
+    for (const c of st.hand) if (c.enh === 'acier' && !debuffed(c)) { apply({ xmult: 1.5 }, cardEls.get(c.uid)); await wait(330); }
+    // super cards: Néon / Holo before the card's effect, Arc-en-ciel after
+    for (const sc of st.supers) {
+      if (sc.ed === 'neon') { apply({ chips: 50 }, scEl(sc)); await wait(300); }
+      if (sc.ed === 'holo') { apply({ mult: 10 }, scEl(sc)); await wait(300); }
+      if (sc.afterHand && apply(sc.afterHand(ctx, sc), scEl(sc))) await wait(420);
+      if (sc.ed === 'arc') { apply({ xmult: 1.5 }, scEl(sc)); await wait(320); }
+    }
+    // Verre: 1 chance in 4 to break
+    const broken = ev.scoring.filter(c => c.enh === 'verre' && !debuffed(c) && Math.random() < .25);
+    for (const c of broken) { pop(cardEls.get(c.uid), 'Brisée !', 'off'); Sfx.play('xmult'); st.cards = st.cards.filter(x => x !== c); }
 
     const total = Math.floor(chips * mult);
     st.bestHand = Math.max(st.bestHand, total);
@@ -773,6 +949,7 @@
   // ---------- end of round ----------
   async function roundWon() {
     Sfx.play('win');
+    const gold = st.hand.filter(c => c.enh === 'or').length;
     flyAway(st.hand, true);
     st.hand = [];
     showPlay(false);
@@ -786,6 +963,7 @@
     const interest = Math.min(st.interestMax, Math.floor(st.soles / 5));
     if (interest) lines.push([`1 d'intérêt par tranche de 5 € (max ${st.interestMax} €)`, interest, 'gold']);
     st.supers.forEach(sc => { const m = sc.endRound && sc.endRound(st, sc); if (m) lines.push([sc.card.n, m, 'rosa']); });
+    if (gold) lines.push([`Cartes en or gardées en main (${gold})`, gold * 3, 'gold']);
     const sum = lines.reduce((s, l) => s + l[1], 0);
     await wait(500);
     showCenter(`<div class="cash">
@@ -813,50 +991,68 @@
 
   function nextTanda() {
     st.tanda++;
-    if (st.tanda > 2) { st.tanda = 0; st.noche++; pickBoss(); Meta.max('best', st.noche); if (st.noche >= 4) Meta.unlock('noche4'); }
+    if (st.tanda > 2) {
+      st.tanda = 0; st.noche++; pickBoss(); st.voucherOffer = null;
+      Meta.max('best', st.noche);
+      if (st.noche >= 4) Meta.unlock('noche4');
+      if (st.noche >= 6) Meta.unlock('noche6');
+    }
     st.score = 0; st.target = 0;
     st.hands = st.handsBase; st.discards = st.discardsBase;
     selectPhase();
   }
 
-  // ---------- shop ----------
+  // ---------- shop (ChichaClub) ----------
   function shop() {
-    st.phase = 'shop';
-    st.rerollCost = 5;
+    st.phase = 'shop'; st.busy = false;
+    st.rerollCost = Math.max(1, 5 - (st.vouchers.has('relance') ? 2 : 0));
     st.offers = rollOffers();
-    st.cumbias = Poker.shuffle(Poker.HANDS.slice()).slice(0, 2).map(h => ({ h, sold: false }));
+    if (!st.voucherOffer) {
+      const left = Items.VOUCHERS.filter(v => !st.vouchers.has(v.id));
+      st.voucherOffer = left.length ? { v: rnd(left), sold: false } : null;
+    }
+    st.packs = [Items.rollPack(), Items.rollPack()].map(p => ({ p, sold: false }));
     Bg.set('shop');
     renderSide();
     shopScreen(true);
   }
+  // The card row mixes super cards, Voyance and Vinyles.
   function rollOffers() {
     const owned = new Set(st.supers.map(sc => sc.card.id)), out = [];
-    for (let i = 0; i < 3; i++) {
-      const pool = Unlocks.open();
-      const c = Supers.rollCard(pool.length ? pool : DB.cards, new Set([...owned, ...out.map(o => o.card.id)]));
-      out.push(Supers.make(c, seriesOf(c)));
+    const wS = 70, wV = 15 * st.voyMul, wN = 15 * st.vinMul;
+    for (let i = 0; i < st.shopSlots; i++) {
+      const r = Math.random() * (wS + wV + wN);
+      if (r < wS) {
+        const pool = Unlocks.open();
+        const c = Supers.rollCard(pool.length ? pool : DB.cards, new Set([...owned, ...out.filter(o => o.card).map(o => o.card.id)]));
+        out.push(makeSuper(c));
+      } else if (r < wS + wV) out.push(newVoyance());
+      else out.push(newVinyl());
     }
     return out;
   }
-  function vinyl(h) {
-    return `<div class="vinyl"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48" fill="#120a18" stroke="#000" stroke-width="3"/>
-      ${[40, 33, 26].map(r => `<circle cx="50" cy="50" r="${r}" fill="none" stroke="#2a1d33" stroke-width="2"/>`).join('')}
-      <circle cx="50" cy="50" r="17" fill="#ff2e88" stroke="#000" stroke-width="2"/><circle cx="50" cy="50" r="3" fill="#000"/>
-      <path d="M50 33 A17 17 0 0 1 67 50 L50 50 Z" fill="#ffe600"/></svg></div>`;
+  const itemBox = (art, name, desc) => `<div class="itw" tabindex="0">${art}<span class="itd"><b>${esc(name)}</b>${esc(desc)}</span></div>`;
+  function offerHTML(o, i) {
+    if (!o) return '<div class="offer sold"><span>Vendu</span></div>';
+    if (o.card) return `<div class="offer"><span class="price">${priceOf(o.price)} €</span>${superHTML(o)}<button class="btn sm blue buy" data-buy="${i}">Recruter</button></div>`;
+    return `<div class="offer itm"><span class="price">${priceOf(o.price)} €</span>${itemBox(itemArt(o), itemName(o), itemDesc(o))}<button class="btn sm blue buy" data-buy="${i}">Acheter</button></div>`;
   }
   function shopScreen(anim) {
+    const vo = st.voucherOffer, vp = vo ? priceOf(vo.v.price || 10) : 0;
     showCenter(`<div class="shop">
       <div class="shop-btns">
         <button class="btn xl rosa" id="b-next">Manche<br>suivante</button>
         <button class="btn lg green" id="b-reroll">Relancer<br><b>${st.rerollCost} €</b></button>
       </div>
-      <div class="offers">${st.offers.map((sc, i) => sc ? `<div class="offer"><span class="price">${sc.price} €</span>${superHTML(sc)}<button class="btn sm blue buy" data-buy="${i}">Recruter</button></div>` : '<div class="offer sold"><span>Vendu</span></div>').join('')}</div>
-      <div class="cumbias">${st.cumbias.map((o, i) => {
-        const v = handValue(o.h);
-        return `<div class="cumbia${o.sold ? ' sold' : ''}"><span class="price">3 €</span>${vinyl(o.h)}<b>${o.h.n}</b><small>niv.${levelOf(o.h.id)} → ${levelOf(o.h.id) + 1}</small><span class="cmx"><i class="c">+${o.h.lc}</i><i class="m">+${o.h.lm}</i></span>
-          ${o.sold ? '<span class="tag">Écouté</span>' : `<button class="btn sm blue" data-cum="${i}">Écouter</button>`}</div>`;
-      }).join('')}</div>
+      <div class="offers">${st.offers.map(offerHTML).join('')}</div>
+      <div class="shop-low">
+        <div class="vbox"><small>Ticket VIP de la nuit</small>${!vo ? '<p class="mute">Tu as tous les tickets !</p>' : vo.sold ? '<div class="offer sold"><span>Acheté</span></div>'
+          : `<div class="offer tk"><span class="price">${vp} €</span>${itemBox(Items.ticketArt(vo.v), vo.v.n, vo.v.d)}<button class="btn sm blue" id="b-vch">Acheter</button></div>`}</div>
+        <div class="pbox"><small>Pochettes</small><div class="packs">${st.packs.map((o, i) => o.sold ? '<div class="offer sold"><span>Ouverte</span></div>'
+          : `<div class="offer pk"><span class="price">${priceOf(o.p.price)} €</span>${itemBox(Items.packArt(o.p), o.p.n, `Choisis ${o.p.pick} carte${o.p.pick > 1 ? 's' : ''} parmi ${o.p.size}`)}<button class="btn sm blue" data-pack="${i}">Ouvrir</button></div>`).join('')}</div></div>
+      </div>
     </div>`, 'shopc' + (anim ? '' : ' still'));
+    const C = $('#center');
     $('#b-next').onclick = async e => {
       e.currentTarget.disabled = true;
       Sfx.play('click');
@@ -866,36 +1062,126 @@
     const rr = $('#b-reroll');
     rr.disabled = st.soles < st.rerollCost;
     rr.onclick = () => { if (st.soles < st.rerollCost) return; setSoles(st.soles - st.rerollCost); st.rerollCost++; st.offers = rollOffers(); Sfx.play('shuffle'); shopScreen(); };
-    $('#center').querySelectorAll('[data-buy]').forEach(b => {
-      const sc = st.offers[+b.dataset.buy], full = st.supers.length >= st.maxSupers;
-      b.disabled = st.soles < sc.price || full;
+    C.querySelectorAll('[data-buy]').forEach(b => {
+      const i = +b.dataset.buy, o = st.offers[i], price = priceOf(o.price);
+      const full = o.card ? !roomForSuper(o) : st.consumables.length >= st.maxCons;
+      b.disabled = st.soles < price || full;
       if (full) b.textContent = 'Plus de place';
       b.onclick = () => {
-        setSoles(st.soles - sc.price);
-        st.supers.push(sc);
-        st.offers[+b.dataset.buy] = null;
-        st.recruited++;
-        Meta.add('recruited');
+        setSoles(st.soles - price);
+        st.offers[i] = null;
         Sfx.play('buy');
-        renderSupers(sc.uid);
+        if (o.card) { st.supers.push(o); st.recruited++; Meta.add('recruited'); renderSupers(o.uid); }
+        else { st.consumables.push(o); renderCons(o.uid); }
         shopScreen();
       };
     });
-    $('#center').querySelectorAll('[data-cum]').forEach(b => {
-      const o = st.cumbias[+b.dataset.cum];
-      b.disabled = st.soles < 3;
+    const vb = $('#b-vch');
+    if (vb) {
+      vb.disabled = st.soles < vp;
+      vb.onclick = () => {
+        setSoles(st.soles - vp);
+        applyVoucher(vo.v.id);
+        vo.sold = true;
+        Meta.add('vouchers');
+        if (Meta.data.stats.vouchers >= 3) Meta.unlock('vouch3');
+        Sfx.play('achieve');
+        toast(`Ticket VIP : ${vo.v.n}`);
+        renderSupers(); renderCons(); renderSide();
+        shopScreen();
+      };
+    }
+    C.querySelectorAll('[data-pack]').forEach(b => {
+      const o = st.packs[+b.dataset.pack], price = priceOf(o.p.price);
+      b.disabled = st.soles < price;
       b.onclick = () => {
-        setSoles(st.soles - 3);
-        st.levels[o.h.id] = levelOf(o.h.id) + 1;
+        setSoles(st.soles - price);
         o.sold = true;
-        Meta.add('cumbias');
-        Sfx.play('level');
-        toast(`${o.h.n} passe au niveau ${levelOf(o.h.id)}`);
-        if (levelOf(o.h.id) >= 4) Meta.unlock('cumbia4');
-        shopScreen();
+        Meta.add('packs');
+        if (Meta.data.stats.packs >= 5) Meta.unlock('pack5');
+        Sfx.play('shuffle');
+        openPack(o.p);
       };
     });
-    wireSupersIn($('#center').querySelector('.offers'), st.offers.filter(Boolean));
+    wireSupersIn(C.querySelector('.offers'), st.offers.filter(o => o && o.card));
+  }
+
+  // ---------- opening a Pochette ----------
+  function randomPlayingCard() {
+    const s = rnd(Poker.SUITS).k, i = Math.floor(Math.random() * 13);
+    return { uid: 9e5 + Math.floor(Math.random() * 1e8), suit: s, rank: Poker.RANKS[i], v: i + 2, enh: Math.random() < .65 ? rnd(Items.ENH_IDS) : null };
+  }
+  function openPack(p) {
+    let picks = p.pick, first = true;
+    let choices = [];
+    if (p.kind === 'super') {
+      const pool = Unlocks.open(), ex = new Set(st.supers.map(s => s.card.id));
+      for (let i = 0; i < p.size; i++) {
+        const c = Supers.rollCard(pool.length ? pool : DB.cards, new Set([...ex, ...choices.map(x => x.card.id)]));
+        choices.push(makeSuper(c));
+      }
+    } else if (p.kind === 'voyance') choices = Poker.shuffle(Items.VOYANCE.slice()).slice(0, p.size).map(v => newVoyance(v.id));
+    else if (p.kind === 'vinyl') choices = Poker.shuffle(Poker.HANDS.slice()).slice(0, p.size).map(h => newVinyl(h.id));
+    else choices = Array.from({ length: p.size }, randomPlayingCard);
+    // Voyance packs show 8 cards from your deck to use the cards on
+    let temp = p.kind === 'voyance' ? Poker.shuffle(st.cards.slice()).slice(0, 8) : [];
+    const sel = new Set();
+
+    const miniCard = (c, extra) => `<div class="mpc ${extra || ''}" data-c="${c.uid}"><div class="face s-${c.suit}">${Art.cardFace(c)}</div></div>`;
+    const choiceHTML = (ch, i) => {
+      if (!ch) return '<div class="offer sold"><span>Pris</span></div>';
+      if (p.kind === 'super') return `<div class="offer">${superHTML(ch)}<button class="btn sm blue" data-pick="${i}" ${roomForSuper(ch) ? '' : 'disabled'}>${roomForSuper(ch) ? 'Prendre' : 'Plus de place'}</button></div>`;
+      if (p.kind === 'cards') {
+        const E = ch.enh && Items.ENH[ch.enh];
+        return `<div class="offer pcard">${miniCard(ch, 'big')}<span class="itd2"><b>${esc(Poker.label(ch))} ${Poker.suitOf(ch.suit).s}</b>${E ? `${E.n} : ${esc(E.d)}` : 'Carte normale'}</span><button class="btn sm blue" data-pick="${i}">Ajouter au deck</button></div>`;
+      }
+      return `<div class="offer itm">${itemBox(itemArt(ch), itemName(ch), itemDesc(ch))}<button class="btn sm blue" data-pick="${i}">Utiliser</button></div>`;
+    };
+    const done = () => { shopScreen(); };
+    const render = () => {
+      showCenter(`<div class="packo" style="--pc:${p.col}">
+        <div class="packo-h"><b>${esc(p.n)}</b><span>Choisis encore <i>${picks}</i> carte${picks > 1 ? 's' : ''}</span><button class="btn sm orange" id="pk-skip">Passer</button></div>
+        ${p.kind === 'voyance' ? `<div class="mini-hand">${temp.map(c => miniCard(c, sel.has(c.uid) ? 'sel' : '')).join('')}</div><p class="mute small">Sélectionne des cartes de ton deck ci-dessus, puis utilise une carte Voyance.</p>` : ''}
+        <div class="packo-c">${choices.map(choiceHTML).join('')}</div>
+      </div>`, 'packc' + (first ? '' : ' still'));
+      first = false;
+      const C = $('#center');
+      $('#pk-skip').onclick = () => { Sfx.play('click'); done(); };
+      C.querySelectorAll('.mini-hand .mpc').forEach(el => el.onclick = () => {
+        const u = +el.dataset.c;
+        if (sel.has(u)) { sel.delete(u); Sfx.play('deselect'); } else if (sel.size < 5) { sel.add(u); Sfx.play('select'); }
+        el.classList.toggle('sel', sel.has(u));
+      });
+      C.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
+        const i = +b.dataset.pick, ch = choices[i];
+        if (p.kind === 'super') {
+          if (!roomForSuper(ch)) return;
+          st.supers.push(ch); st.recruited++; Meta.add('recruited'); renderSupers(ch.uid); Sfx.play('buy');
+        } else if (p.kind === 'vinyl') {
+          levelUp(ch.id);
+          if (Meta.data.stats.cumbias >= 5) Meta.unlock('vin5');
+        } else if (p.kind === 'cards') {
+          st.cards.push(ch); Sfx.play('deal'); toast('Carte ajoutée à ton deck');
+          if (st.cards.filter(c => c.enh).length >= 10) Meta.unlock('enh10');
+        } else {
+          const targets = temp.filter(c => sel.has(c.uid));
+          const err = itemBlocked(ch, targets);
+          if (err) { toast(err.replace('dans ta main', 'au-dessus')); Sfx.play('deselect'); return; }
+          Items.VOY[ch.id].apply(voyCtx(targets, (c, gone) => { if (gone) temp = temp.filter(x => !gone.includes(x)); }));
+          sel.clear();
+          Meta.add('voyUsed');
+          if (Meta.data.stats.voyUsed >= 5) Meta.unlock('voy5');
+          if (st.cards.filter(c => c.enh).length >= 10) Meta.unlock('enh10');
+          Sfx.play('achieve');
+        }
+        choices[i] = null;
+        picks--;
+        if (picks <= 0 || choices.every(x => !x)) setTimeout(done, 450 / OPTS.speed);
+        else render();
+      });
+      wireSupersIn(C.querySelector('.packo-c'), choices.filter(x => x && x.card));
+    };
+    render();
   }
 
   // ---------- end screens ----------

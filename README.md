@@ -1,6 +1,6 @@
 # Chichalatro
 
-A poker roguelike in a fluorescent chicha style. Play poker hands to beat score targets over 8 *nuits* (3 *manches* each: L'Apéro, La Soirée, then a Boss with a special rule, like *La Grève Surprise* or *Le RER B*). Between manches, spend euros in the ChichaClub to recruit **super cards**, which are your CHICHA TCG cards, and to level up poker hands with *Cumbias* (vinyl records).
+A poker roguelike in a fluorescent chicha style. Play poker hands to beat score targets over 8 *nuits* (3 *manches* each: L'Apéro, La Soirée, then a Boss with a special rule, like *La Grève Surprise* or *Le RER B*). Between manches, spend euros in the ChichaClub to recruit **super cards**, which are your CHICHA TCG cards, plus Voyance cards, Vinyles, Tickets VIP and Pochettes (boosters).
 
 All code, art (clown logo, playing cards, card backs), sounds and music are original and made for this project. Sounds and music are synthesized in the browser: a punchy funk/breakbeat track on the menu and a laid-back groove during the game.
 
@@ -18,9 +18,15 @@ npx serve .
 
 ## What's in a run
 
-- **Decks** (8): Deck Rose is open from the start. The others unlock through achievements (*succès*), for example *Premier apéro* unlocks Deck Teuf (+1 discard).
+- **Decks** (16): Deck Rose is open from the start. The others unlock through achievements (*succès*), for example *Premier apéro* unlocks Deck Teuf (+1 discard).
 - **Card unlocks**: 38 super cards are open from the first game. Each other card has its own condition (win rounds, beat bosses, play a hand N times, score X in one hand…), harder for rarer cards. Locked cards show in the Collection; click one to see how to unlock it and your progress. The shop only offers unlocked cards.
-- **Difficulty** (*mises*, 6): Blanche → Rose → Orange → Verte → Bleue → Noire. Each adds a rule on top of the previous ones. Winning a run unlocks the next one.
+- **Difficulty** (*mises*, 8): Blanche → Rose → Orange → Verte → Violette → Bleue → Dorée → Noire. Each adds a rule on top of the previous ones. Winning a full game (beating the boss of night 8) at a stake unlocks the next one.
+- **ChichaClub (shop)**: a row of super cards, Voyance cards and Vinyles; one Ticket VIP per night; two Pochettes to open.
+  - **Voyance** (16 cards): change cards of your hand or deck (Piment, Bonus, Caméléon, Verre, Acier, Or, Chance, Pierre…), or give money, super cards, Vinyles.
+  - **Vinyles**: level up one poker hand.
+  - **Tickets VIP** (12): permanent bonuses for the run (+1 hand, +1 discard, +1 card in hand, +1 super card slot, discounts…).
+  - **Pochettes**: choose 1 card among 4 (or 2 among 5 for the Méga ones): super cards, Voyance, Vinyles or new playing cards for your deck.
+- **Mutations**: playing cards can get an enhancement (Bonus, Piment, Caméléon, Verre, Acier, Or, Chance, Pierre); super cards can come with an edition (Néon +50 chips, Holo +10 Mult, Arc-en-ciel ×1.5 Mult, Négatif +1 slot).
 - **Combos tab**: the pink tab next to the side panel (or *Infos run*) lists every poker hand with its level, chips × Mult and how often you played it.
 - **Options**: sound effects, music, volume, game speed (1×/2×/4×), reduced effects.
 - Keyboard: `Enter` plays the selected hand, `D` discards.
@@ -51,6 +57,7 @@ Cards are read from the CHICHA TCG Supabase project: table `game`, row `id = 1`.
 - `js/data.js`: Supabase loading and sign-in
 - `js/meta.js`: achievements, decks, difficulty levels, lifetime stats
 - `js/unlocks.js`: starter cards and the unlock condition of every other card
+- `js/items.js`: Voyance, Vinyles, Tickets VIP, Pochettes, enhancements and editions (data and artwork)
 - `js/art.js`: clown logo, playing cards, card backs (SVG)
 - `js/sfx.js`: sound effects, the two music tracks, and playback of your own music files
 - `js/bg.js`: animated swirl background (WebGL)

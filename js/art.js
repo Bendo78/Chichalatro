@@ -127,6 +127,11 @@
   }
 
   function cardFace(card) {
+    const E = card.enh && window.Items && Items.ENH[card.enh];
+    if (card.enh === 'pierre') return `<span class="stone"></span><span class="enhb" title="${E.n}">${E.ico}</span>`;
+    return cardFaceBase(card) + (E ? `<span class="enhb" title="${E.n} : ${E.d}">${E.ico}</span>` : '');
+  }
+  function cardFaceBase(card) {
     const lb = Poker.label(card), s = SUIT_SYM[card.suit];
     const corner = `<span class="cn">${lb}<b>${s}</b></span>`;
     let mid;

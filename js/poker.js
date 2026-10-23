@@ -52,26 +52,37 @@
     return ok ? cards.slice() : null;
   }
 
+  // Enhanced cards: "joker" (Caméléon) counts as every suit, "pierre" has no rank or suit and always scores.
+  const isStone = c => c.enh === 'pierre';
+  const suitIs = (c, k) => !isStone(c) && (c.enh === 'joker' || c.suit === k);
+
   /** Returns { hand, scoring } — the detected hand and the cards that score. */
   function evaluate(cards) {
     if (!cards.length) return null;
-    const groups = {};
-    cards.forEach(c => (groups[c.v] = groups[c.v] || []).push(c));
-    const g = Object.values(groups).sort((a, b) => b.length - a.length || b[0].v - a[0].v);
-    const flush = cards.length >= 5 && cards.every(c => c.suit === cards[0].suit);
-    const straight = straightCards(cards);
     const pick = id => HAND_BY_ID[id];
+    const stones = cards.filter(isStone), normal = cards.filter(c => !isStone(c));
+    // scoring cards keep the order they were played in; stone cards always score
+    const withStones = sc => cards.filter(c => sc.includes(c) || isStone(c));
+    if (!normal.length) return { hand: pick('high'), scoring: stones.slice() };
 
-    if (flush && straight) return { hand: pick('sflush'), scoring: cards.slice() };
-    if (g[0].length >= 4) return { hand: pick('four'), scoring: g[0].slice(0, 4) };
-    if (g[0].length === 3 && g[1] && g[1].length >= 2) return { hand: pick('full'), scoring: cards.slice() };
-    if (flush) return { hand: pick('flush'), scoring: cards.slice() };
-    if (straight) return { hand: pick('straight'), scoring: cards.slice() };
-    if (g[0].length === 3) return { hand: pick('three'), scoring: g[0].slice() };
-    if (g[0].length === 2 && g[1] && g[1].length === 2) return { hand: pick('two'), scoring: g[0].concat(g[1]) };
-    if (g[0].length === 2) return { hand: pick('pair'), scoring: g[0].slice() };
-    const top = cards.slice().sort((a, b) => b.v - a.v)[0];
-    return { hand: pick('high'), scoring: [top] };
+    const groups = {};
+    normal.forEach(c => (groups[c.v] = groups[c.v] || []).push(c));
+    const g = Object.values(groups).sort((a, b) => b.length - a.length || b[0].v - a[0].v);
+    const natural = normal.filter(c => c.enh !== 'joker');
+    const flush = normal.length >= 5 && (!natural.length || natural.every(c => c.suit === natural[0].suit));
+    const straight = straightCards(normal);
+    const res = (id, sc) => ({ hand: pick(id), scoring: withStones(sc) });
+
+    if (flush && straight) return res('sflush', normal);
+    if (g[0].length >= 4) return res('four', g[0].slice(0, 4));
+    if (g[0].length === 3 && g[1] && g[1].length >= 2) return res('full', normal);
+    if (flush) return res('flush', normal);
+    if (straight) return res('straight', normal);
+    if (g[0].length === 3) return res('three', g[0]);
+    if (g[0].length === 2 && g[1] && g[1].length === 2) return res('two', g[0].concat(g[1]));
+    if (g[0].length === 2) return res('pair', g[0]);
+    const top = normal.slice().sort((a, b) => b.v - a.v)[0];
+    return res('high', [top]);
   }
 
   // "Contains" checks used by super cards (a Full contains a Paire and a Brelan, etc.).
@@ -84,5 +95,5 @@
   };
   const contains = (handId, what) => (CONTAINS[what] || [what]).includes(handId);
 
-  window.Poker = { SUITS, RANKS, HANDS, HAND_BY_ID, newDeck, shuffle, evaluate, suitOf, label, chipsOf, isFace, contains };
+  window.Poker = { SUITS, RANKS, HANDS, HAND_BY_ID, newDeck, shuffle, evaluate, suitOf, label, chipsOf, isFace, contains, suitIs, isStone };
 })();

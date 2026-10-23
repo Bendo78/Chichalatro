@@ -11,7 +11,15 @@
     { id: 'cumbia', n: 'Deck Cumbia', d: 'Paire, Double paire et Brelan commencent au niveau 2.', color: '#2bff6e', ach: 'cumbia4' },
     { id: 'jefe', n: 'Deck Patron', d: '+1 main à chaque manche, mais 1 carte de moins en main.', color: '#a43bff', ach: 'noche4' },
     { id: 'escalera', n: 'Deck Suite', d: 'Quinte, Couleur et Quinte flush commencent au niveau 3.', color: '#00e0b0', ach: 'sflush' },
-    { id: 'leyenda', n: 'Deck Légende', d: 'Commence avec une super carte Légendaire débloquée au hasard.', color: '#ffd84a', ach: 'champion' }
+    { id: 'leyenda', n: 'Deck Légende', d: 'Commence avec une super carte Légendaire débloquée au hasard.', color: '#ffd84a', ach: 'champion' },
+    { id: 'voyant', n: 'Deck Voyant', d: 'Commence avec le ticket Boule de cristal et une carte Voyance.', color: '#c46bff', ach: 'voy5' },
+    { id: 'disco', n: 'Deck Disco', d: 'Commence avec le ticket Disquaire et 2 Vinyles.', color: '#13b86b', ach: 'vin5' },
+    { id: 'bijou', n: 'Deck Bijou', d: '12 cartes du deck commencent avec une amélioration au hasard.', color: '#ffc93c', ach: 'enh10' },
+    { id: 'damier', n: 'Deck Damier', d: 'Seulement des ♥ et des ♠ (26 de chaque).', color: '#e5126a', ach: 'flush10' },
+    { id: 'vide', n: 'Deck Sans Tête', d: 'Aucune figure : 40 cartes seulement.', color: '#8a7f73', ach: 'pack5' },
+    { id: 'peintre', n: 'Deck Peintre', d: '+2 cartes en main, mais 1 emplacement de super carte en moins.', color: '#ff7a00', ach: 'noche6' },
+    { id: 'paillettes', n: 'Deck Paillettes', d: 'Les éditions (Néon, Holo…) sont 3× plus fréquentes.', color: '#ff86de', ach: 'ed1' },
+    { id: 'ticket', n: 'Deck Coupon', d: 'Commence avec 2 tickets VIP au hasard.', color: '#18d6ff', ach: 'vouch3' }
   ];
 
   const ACHIEVEMENTS = [
@@ -24,7 +32,15 @@
     { id: 'champion', n: 'Roi de la nuit', d: 'Gagner une partie' },
     { id: 'big', n: 'Ça passe crème', d: 'Marquer 100 000 en une seule main' },
     { id: 'jefes', n: 'Chasseur de boss', d: 'Battre 10 boss (toutes parties confondues)' },
-    { id: 'negra', n: 'Légende noire', d: 'Gagner une partie en Mise Noire' }
+    { id: 'negra', n: 'Légende noire', d: 'Gagner une partie en Mise Noire' },
+    { id: 'voy5', n: 'Madame Irma', d: 'Utiliser 5 cartes Voyance' },
+    { id: 'vin5', n: 'Platine d\'or', d: 'Utiliser 5 Vinyles' },
+    { id: 'enh10', n: 'Bling-bling', d: 'Avoir 10 cartes améliorées dans ton deck' },
+    { id: 'flush10', n: 'Tout en couleur', d: 'Jouer 10 Couleurs (toutes parties confondues)' },
+    { id: 'pack5', n: 'Déballage', d: 'Ouvrir 5 Pochettes' },
+    { id: 'noche6', n: 'Jusqu\'au bout de la nuit', d: 'Atteindre la nuit 6' },
+    { id: 'ed1', n: 'Édition limitée', d: 'Obtenir une super carte avec une édition' },
+    { id: 'vouch3', n: 'Carré VIP', d: 'Acheter 3 tickets VIP' }
   ];
 
   // Each level adds its rule to all the levels below it.
@@ -33,7 +49,9 @@
     { n: 'Rose', c: '#ff2e88', d: 'L\'Apéro ne rapporte plus rien' },
     { n: 'Orange', c: '#ff7a00', d: 'Objectifs +25 %' },
     { n: 'Verte', c: '#2bff6e', d: 'Une défausse de moins' },
+    { n: 'Violette', c: '#a43bff', d: 'Tout coûte 1 € de plus dans la ChichaClub' },
     { n: 'Bleue', c: '#18d6ff', d: 'Les boss demandent ×2,5 au lieu de ×2' },
+    { n: 'Dorée', c: '#ffc93c', d: 'Intérêts plafonnés à 3 €' },
     { n: 'Noire', c: '#2a1f33', d: 'Une main de moins' }
   ];
 
@@ -68,7 +86,11 @@
   function changed() { save(); statListeners.forEach(fn => fn()); }
   function add(key, n) { m.stats[key] = (m.stats[key] || 0) + (n == null ? 1 : n); changed(); }
   function max(key, v) { if (v > (m.stats[key] || 0)) { m.stats[key] = v; changed(); } }
-  function addHand(id) { m.stats.hands[id] = (m.stats.hands[id] || 0) + 1; changed(); }
+  function addHand(id) {
+    m.stats.hands[id] = (m.stats.hands[id] || 0) + 1;
+    changed();
+    if ((m.stats.hands.flush || 0) + (m.stats.hands.sflush || 0) >= 10) unlock('flush10');
+  }
 
   function winRun(deckId, stake) {
     m.stats.wins++;

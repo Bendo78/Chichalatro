@@ -28,32 +28,32 @@
     feu: [
       T => ({ text: `+${4 * T} Mult`, afterHand: () => ({ mult: 4 * T }) }),
       T => ({ text: `+${8 * T} Mult si la main contient une Paire`, afterHand: c => Poker.contains(c.hand.id, 'pair') ? { mult: 8 * T } : null }),
-      (T, suit) => ({ text: `Chaque ${suitSym(suit)} joué donne +${2 * T} Mult`, perCard: card => card.suit === suit ? { mult: 2 * T } : null })
+      (T, suit) => ({ text: `Chaque ${suitSym(suit)} joué donne +${2 * T} Mult`, perCard: card => Poker.suitIs(card, suit) ? { mult: 2 * T } : null })
     ],
     eau: [
       T => ({ text: `+${30 * T} Jetons`, afterHand: () => ({ chips: 30 * T }) }),
-      T => ({ text: `Chaque figure jouée donne +${10 * T} Jetons`, perCard: card => Poker.isFace(card) ? { chips: 10 * T } : null }),
+      T => ({ text: `Chaque figure jouée donne +${10 * T} Jetons`, perCard: card => !Poker.isStone(card) && Poker.isFace(card) ? { chips: 10 * T } : null }),
       T => ({ text: `+${60 * T} Jetons si tu joues 3 cartes ou moins`, afterHand: c => c.played.length <= 3 ? { chips: 60 * T } : null })
     ],
     foudre: [
       T => ({ text: `${fmtX(1 + 0.25 * T)} Mult`, afterHand: () => ({ xmult: 1 + 0.25 * T }) }),
       T => ({ text: `${fmtX(1 + 0.5 * T)} Mult si la main contient un Brelan`, afterHand: c => Poker.contains(c.hand.id, 'three') ? { xmult: 1 + 0.5 * T } : null }),
-      T => ({ text: `Chaque As joué donne ${fmtX(1 + 0.2 * T)} Mult`, perCard: card => card.v === 14 ? { xmult: 1 + 0.2 * T } : null })
+      T => ({ text: `Chaque As joué donne ${fmtX(1 + 0.2 * T)} Mult`, perCard: card => !Poker.isStone(card) && card.v === 14 ? { xmult: 1 + 0.2 * T } : null })
     ],
     nature: [
       T => ({ text: `Gagne +${T} Mult à chaque main jouée`, grow: 'mult', onPlayed: (c, sc) => { sc.store.n = (sc.store.n || 0) + T; }, afterHand: (c, sc) => sc.store.n ? { mult: sc.store.n } : null }),
       T => ({ text: `Gagne +${5 * T} Jetons à chaque défausse`, grow: 'chips', onDiscard: (n, sc) => { sc.store.n = (sc.store.n || 0) + 5 * T; }, afterHand: (c, sc) => sc.store.n ? { chips: sc.store.n } : null }),
-      (T, suit) => ({ text: `Gagne +${3 * T} Jetons par ${suitSym(suit)} joué`, grow: 'chips', onPlayed: (c, sc) => { sc.store.n = (sc.store.n || 0) + 3 * T * c.scoring.filter(x => x.suit === suit).length; }, afterHand: (c, sc) => sc.store.n ? { chips: sc.store.n } : null })
+      (T, suit) => ({ text: `Gagne +${3 * T} Jetons par ${suitSym(suit)} joué`, grow: 'chips', onPlayed: (c, sc) => { sc.store.n = (sc.store.n || 0) + 3 * T * c.scoring.filter(x => Poker.suitIs(x, suit)).length; }, afterHand: (c, sc) => sc.store.n ? { chips: sc.store.n } : null })
     ],
     psy: [
       T => ({ text: T >= 3 ? 'Rejoue la première et la dernière carte jouée' : 'Rejoue la première carte jouée', retrigger: (card, i, c) => (i === 0 || (T >= 3 && i === c.scoring.length - 1)) ? 1 : 0 }),
-      (T, suit) => ({ text: `Chaque ${suitSym(suit)} joué donne +${3 * T} Mult`, perCard: card => card.suit === suit ? { mult: 3 * T } : null }),
+      (T, suit) => ({ text: `Chaque ${suitSym(suit)} joué donne +${3 * T} Mult`, perCard: card => Poker.suitIs(card, suit) ? { mult: 3 * T } : null }),
       T => ({ text: `+${2 * T} Mult par défausse restante`, afterHand: c => c.discardsLeft ? { mult: 2 * T * c.discardsLeft } : null })
     ],
     ombre: [
       T => ({ text: `Gagne ${2 * T} € en fin de manche`, endRound: () => 2 * T }),
       T => ({ text: `${fmtX(1 + 0.5 * T)} Mult sur la dernière main de la manche`, afterHand: c => c.isLastHand ? { xmult: 1 + 0.5 * T } : null }),
-      T => ({ text: `Chaque ♦ joué rapporte ${T >= 3 ? 2 : 1} €`, perCard: card => card.suit === 'K' ? { money: T >= 3 ? 2 : 1 } : null })
+      T => ({ text: `Chaque ♦ joué rapporte ${T >= 3 ? 2 : 1} €`, perCard: card => Poker.suitIs(card, 'K') ? { money: T >= 3 ? 2 : 1 } : null })
     ]
   };
 
