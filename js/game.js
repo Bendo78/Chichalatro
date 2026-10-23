@@ -20,18 +20,18 @@
   const NOCHES = 8;
   const BASE_TARGET = [300, 800, 2000, 5000, 11000, 20000, 35000, 50000];
   const TANDAS = [
-    { n: 'Tanda chica', short: 'TC', reward: 3, mul: 1, col: '#18d6ff' },
-    { n: 'Tanda grande', short: 'TG', reward: 4, mul: 1.5, col: '#ff7a00' },
-    { n: 'El Jefe', short: 'JF', reward: 5, mul: 2, col: '#ff2e88' }
+    { n: "L'Apéro", short: 'AP', reward: 3, mul: 1, col: '#18d6ff' },
+    { n: 'La Soirée', short: 'SO', reward: 4, mul: 1.5, col: '#ff7a00' },
+    { n: 'Le Boss', short: 'BS', reward: 5, mul: 2, col: '#ff2e88' }
   ];
   const BOSSES = [
-    { id: 'suit', n: 'El Cobrador', d: s => `Les ${s} ne rapportent rien` },
-    { id: 'hands', n: 'La Tacaña', d: () => 'Une main de moins' },
-    { id: 'nodisc', n: 'El Apagón', d: () => 'Aucune défausse' },
-    { id: 'size', n: 'El Estrecho', d: () => 'Une carte de moins en main' },
-    { id: 'five', n: 'La Exigente', d: () => 'Chaque main doit avoir 5 cartes' },
-    { id: 'face', n: 'El Serio', d: () => 'Les figures ne rapportent rien' },
-    { id: 'pricey', n: 'La Cobradora', d: () => 'Chaque main jouée coûte S/ 1' }
+    { id: 'suit', n: 'Le Contrôleur RATP', q: "Titre de transport, s'il vous plaît.", d: s => `Les ${s} ne rapportent rien` },
+    { id: 'hands', n: 'La Grève Surprise', q: 'Préavis déposé ce matin.', d: () => 'Une main de moins' },
+    { id: 'nodisc', n: 'La Coupure EDF', q: 'Facture impayée, plus de courant.', d: () => 'Aucune défausse' },
+    { id: 'size', n: 'Le RER B', q: 'Incident voyageur, serrez-vous.', d: () => 'Une carte de moins en main' },
+    { id: 'five', n: 'La CAF', q: 'Dossier incomplet : il manque des pièces.', d: () => 'Chaque main doit avoir 5 cartes' },
+    { id: 'face', n: 'Le Videur', q: 'Pas ce soir, les gars.', d: () => 'Les figures ne rapportent rien' },
+    { id: 'pricey', n: 'Les Impôts', q: 'Prélèvement à la source.', d: () => 'Chaque main jouée coûte S/ 1' }
   ];
   const EXAMPLES = {
     high: 'A♠ seul', pair: '7♥ 7♣', two: '7♥ 7♣ · 4♦ 4♠', three: 'D♥ D♣ D♦', straight: '5 6 7 8 9',
@@ -267,7 +267,7 @@
         const deck = Meta.DECKS.find(d => d.ach === a.id), ok = !!M.ach[a.id];
         return `<div class="ach${ok ? ' ok' : ''}"><span class="trophy">${ok ? '🏆' : '🔒'}</span><span><b>${esc(a.n)}</b><small>${esc(a.d)}</small>${deck ? `<em style="--c:${deck.color}">Débloque : ${deck.n}</em>` : ''}</span></div>`;
       }).join('')}</div>
-      <p class="mute">Parties gagnées : ${M.stats.wins} · Jefes battus : ${M.stats.bosses} · Meilleure main : ${fmt(M.stats.bestHand)}</p>
+      <p class="mute">Parties gagnées : ${M.stats.wins} · Boss battus : ${M.stats.bosses} · Meilleure main : ${fmt(M.stats.bestHand)}</p>
       <div class="acts"><button class="btn blue" id="ac-x">Fermer</button></div>`, 'wide');
     ov.querySelector('#ac-x').onclick = ov.close;
   }
@@ -299,15 +299,35 @@
     const order = ['feu', 'eau', 'foudre', 'nature', 'psy', 'ombre'];
     const all = DB.cards.map(c => Supers.make(c, seriesOf(c))).sort((a, b) => b.tier - a.tier || order.indexOf(a.fam) - order.indexOf(b.fam));
     let filter = 'all';
+    const opened = all.filter(sc => Unlocks.isOpen(sc.card)).length;
     app().innerHTML = `<section class="col">
-      <header class="colbar"><button class="btn" id="b-back">← Menu</button><h2 class="ttl">Collection <small>${all.length} cartes</small></h2>
-        <div class="filters">${[['all', 'Toutes'], ...order.map(k => [k, Supers.TYPE_FAM[k]])].map(([k, n]) => `<button class="chip${k === 'all' ? ' on' : ''}" data-f="${k}">${n}</button>`).join('')}</div></header>
+      <header class="colbar"><button class="btn" id="b-back">← Menu</button><h2 class="ttl">Collection <small>${opened}/${all.length} débloquées</small></h2>
+        <div class="filters">${[['all', 'Toutes'], ['open', 'Débloquées'], ['locked', 'Verrouillées'], ...order.map(k => [k, Supers.TYPE_FAM[k]])].map(([k, n]) => `<button class="chip${k === 'all' ? ' on' : ''}" data-f="${k}">${n}</button>`).join('')}</div></header>
+      <p class="colhint">Clique une carte pour la retourner. Une carte verrouillée montre comment la débloquer.</p>
       <div class="grid" id="grid"></div>
     </section>`;
+    const lockedHTML = sc => {
+      const p = Unlocks.progress(sc.card), tier = Supers.TIERS[sc.tier];
+      const pct = p ? Math.round(p.have / p.need * 100) : 0;
+      return `<div class="sc locked ${tier.cls}" tabindex="0" role="button" aria-label="Carte verrouillée : ${p ? esc(p.text) : ''}">
+        <div class="sway"><div class="sc-in"><div class="sc-f">${Art.cardBack('#3a2a4a')}<span class="lockico">🔒</span><span class="sc-tier">${tier.n}</span><span class="sc-name">???</span></div></div></div>
+        <div class="bubble"><b>Comment la débloquer</b><span>${p ? esc(p.text) : 'Bientôt'}</span>${p ? `<i class="bar"><i style="width:${pct}%"></i></i><small>${fmt(p.have)} / ${fmt(p.need)}</small>` : ''}</div>
+      </div>`;
+    };
     const draw = () => {
-      const list = all.filter(s => filter === 'all' || s.fam === filter);
-      $('#grid').innerHTML = list.map(sc => superHTML(sc)).join('');
-      wireSupersIn($('#grid'), list);
+      const list = all.filter(s => {
+        const open = Unlocks.isOpen(s.card);
+        if (filter === 'open') return open;
+        if (filter === 'locked') return !open;
+        return filter === 'all' || s.fam === filter;
+      });
+      $('#grid').innerHTML = list.map(sc => Unlocks.isOpen(sc.card) ? superHTML(sc) : lockedHTML(sc)).join('');
+      wireSupersIn($('#grid'), list.filter(sc => Unlocks.isOpen(sc.card)));
+      $('#grid').querySelectorAll('.sc.locked').forEach(el => {
+        const t = () => { const on = !el.classList.contains('show'); $('#grid').querySelectorAll('.sc.locked.show').forEach(x => x.classList.remove('show')); el.classList.toggle('show', on); Sfx.play('flip'); };
+        el.addEventListener('click', t);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t(); } });
+      });
     };
     app().querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; app().querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x === b)); Sfx.play('click'); draw(); });
     $('#b-back').onclick = () => { Sfx.play('click'); title(); };
@@ -330,13 +350,13 @@
     if (deck.id === 'jefe') { st.handsBase++; st.handSizeBase--; }
     if (deck.id === 'escalera') ['straight', 'flush', 'sflush'].forEach(h => st.levels[h] = 3);
     if (deck.id === 'leyenda') {
-      const legs = DB.cards.filter(c => Supers.TIER_OF[c.r] === 4);
+      const open = Unlocks.open(), legs = open.filter(c => Supers.TIER_OF[c.r] === 4);
       if (legs.length) { const c = rnd(legs); st.supers.push(Supers.make(c, seriesOf(c))); }
     }
     if (stake >= 3) st.discardsBase--;
     if (stake >= 5) st.handsBase--;
     st.hands = st.handsBase; st.discards = st.discardsBase;
-    Meta.data.stats.runs++; Meta.save();
+    Meta.add('runs');
     pickBoss();
     runShell();
     selectPhase();
@@ -391,13 +411,13 @@
   function renderSide() {
     const t = TANDAS[st.tanda];
     let head;
-    if (st.phase === 'shop') head = `<div class="sign"><span class="bulbs"></span><b>BODEGA</b><small>¡Recrute ta bande!</small></div>`;
-    else if (st.phase === 'select') head = `<div class="sign pick"><b>Choisis</b><small>ta prochaine tanda</small></div>`;
+    if (st.phase === 'shop') head = `<div class="sign"><span class="bulbs"></span><b>BODEGA</b><small>Recrute ta bande !</small></div>`;
+    else if (st.phase === 'select') head = `<div class="sign pick"><b>Choisis</b><small>ta prochaine manche</small></div>`;
     else head = `<div class="blindbar" style="--bc:${t.col}">${isBoss() ? esc(st.boss.n) : t.n}</div>
       <div class="blindbox" style="--bc:${t.col}">${chipIcon(t)}<div><small>Objectif minimum</small><b class="tgt">${fmt(st.target)}</b><em>Récompense : <span>${'S/' + rewardFor(st.tanda)}</span></em></div></div>
-      ${isBoss() ? `<p class="bossrule">${esc(st.boss.desc)}</p>` : ''}`;
+      ${isBoss() ? `<p class="bossrule"><i>« ${esc(st.boss.q)} »</i>${esc(st.boss.desc)}</p>` : ''}`;
     $('#side').innerHTML = `<div class="head">${head}</div>
-      <div class="rs"><small>Score<br>de la tanda</small><b id="s-score">${fmt(st.score)}</b></div>
+      <div class="rs"><small>Score<br>de la manche</small><b id="s-score">${fmt(st.score)}</b></div>
       <div class="calc" id="calc"><div class="hn" id="s-hand">&nbsp;</div><div class="cm"><span class="chips" id="s-chips">0</span><i>×</i><span class="mult" id="s-mult">0</span></div></div>
       <div class="sgrid">
         <button class="btn rosa sq info" id="s-info">Infos<br>run</button>
@@ -405,8 +425,8 @@
         <div class="stbox disc"><small>Défausses</small><b class="c-red" id="s-disc">${st.discards}</b></div>
         <div class="stbox soles"><b class="c-gold" id="s-soles">S/ ${st.soles}</b></div>
         <button class="btn orange sq opt" id="s-opt">Options</button>
-        <div class="stbox noche"><small>Noche</small><b><span class="c-gold">${st.noche}</span>/${NOCHES}</b></div>
-        <div class="stbox round"><small>Tanda</small><b class="c-gold">${st.round}</b></div>
+        <div class="stbox noche"><small>Nuit</small><b><span class="c-gold">${st.noche}</span>/${NOCHES}</b></div>
+        <div class="stbox round"><small>Manche</small><b class="c-gold">${st.round}</b></div>
       </div>`;
     $('#s-info').onclick = toggleDrawer;
     $('#s-opt').onclick = () => { Sfx.play('click'); optionsModal(); };
@@ -419,7 +439,7 @@
     const hot = st.target && chips * mult >= Math.max(1, st.target - st.score);
     calc.classList.toggle('fire', !!hot && chips > 0);
   }
-  function setSoles(v) { st.soles = v; setStat('s-soles', 'S/ ' + st.soles); if (st.soles >= 40) Meta.unlock('rich'); }
+  function setSoles(v) { st.soles = v; setStat('s-soles', 'S/ ' + st.soles); Meta.max('maxSoles', st.soles); if (st.soles >= 40) Meta.unlock('rich'); }
 
   function renderDrawer() {
     $('#drawer').innerHTML = `<h3>Combos de poker</h3><p class="mute">Niveau, valeur de base et nombre de fois jouée cette partie.</p>
@@ -485,9 +505,9 @@
         <div class="bl-h">${cur ? '<button class="btn sm orange" id="b-go">Jouer</button>' : done ? '<span class="tag">Passée</span>' : '<span class="tag">À venir</span>'}</div>
         <div class="bl-n">${i === 2 ? esc(st.boss.n) : t.n}</div>
         ${chipIcon(t)}
-        ${i === 2 ? `<p class="bl-rule">${esc(st.boss.desc)}</p>` : ''}
+        ${i === 2 ? `<p class="bl-rule"><i>« ${esc(st.boss.q)} »</i>${esc(st.boss.desc)}</p>` : ''}
         <div class="bl-t"><small>Objectif minimum</small><b>${fmt(targetFor(st.noche, i))}</b><em>Récompense : S/${rewardFor(i)}</em></div>
-        ${skipH && cur ? `<div class="bl-skip"><small>ou</small><button class="btn sm rosa" id="b-skip">Sauter la tanda</button><span>Bonus : <b>${skipH.n}</b> +1 niveau</span></div>` : skipH ? `<div class="bl-skip dim"><small>Sauter : ${skipH.n} +1 niv.</small></div>` : ''}
+        ${skipH && cur ? `<div class="bl-skip"><small>ou</small><button class="btn sm rosa" id="b-skip">Sauter la manche</button><span>Bonus : <b>${skipH.n}</b> +1 niveau</span></div>` : skipH ? `<div class="bl-skip dim"><small>Sauter : ${skipH.n} +1 niv.</small></div>` : ''}
       </div>`;
     }).join('');
     showCenter(`<div class="bls">${cols}</div>`, 'select');
@@ -649,6 +669,7 @@
     setStat('s-hands', st.hands);
     const ev = Poker.evaluate(sel);
     st.handCounts[ev.hand.id] = (st.handCounts[ev.hand.id] || 0) + 1;
+    Meta.addHand(ev.hand.id);
     if (ev.hand.id === 'sflush') Meta.unlock('sflush');
     sel.forEach(c => c.where = 'played');
     Sfx.play('slide');
@@ -681,7 +702,7 @@
       if (debuffed(card)) { pop(el, 'Bloqué', 'off'); Sfx.play('deselect'); await wait(380); continue; }
       const times = 1 + st.supers.reduce((n, sc) => n + (sc.retrigger ? sc.retrigger(card, i, ctx, sc) : 0), 0);
       for (let t = 0; t < times; t++) {
-        if (t > 0) { pop(el, '¡Otra vez!', 'again'); Sfx.play('again'); await wait(300); }
+        if (t > 0) { pop(el, 'Encore !', 'again'); Sfx.play('again'); await wait(300); }
         apply({ chips: Poker.chipsOf(card) }, el);
         await wait(330);
         for (const sc of st.supers) if (sc.perCard && apply(sc.perCard(card, ctx, sc), scEl(sc))) await wait(330);
@@ -691,7 +712,7 @@
 
     const total = Math.floor(chips * mult);
     st.bestHand = Math.max(st.bestHand, total);
-    if (total > Meta.data.stats.bestHand) { Meta.data.stats.bestHand = total; Meta.save(); }
+    Meta.max('bestHand', total);
     if (total >= 100000) Meta.unlock('big');
     Sfx.play('total');
     $('#s-hand').innerHTML = `<b class="total">${fmt(total)}</b>`;
@@ -723,6 +744,7 @@
     st.sel.clear();
     st.discards--;
     setStat('s-disc', st.discards);
+    Meta.add('discards', sel.length);
     st.supers.forEach(sc => sc.onDiscard && sc.onDiscard(sel.length, sc));
     Sfx.play('slide');
     flyAway(sel);
@@ -740,7 +762,8 @@
     flyAway(st.hand, true);
     st.hand = [];
     showPlay(false);
-    if (isBoss()) { Meta.data.stats.bosses++; Meta.save(); if (Meta.data.stats.bosses >= 10) Meta.unlock('jefes'); }
+    Meta.add('rounds');
+    if (isBoss()) { Meta.add('bosses'); if (Meta.data.stats.bosses >= 10) Meta.unlock('jefes'); }
     Meta.unlock('tanda1');
     const t = TANDAS[st.tanda];
     const lines = [];
@@ -752,7 +775,7 @@
     const sum = lines.reduce((s, l) => s + l[1], 0);
     await wait(500);
     showCenter(`<div class="cash">
-      <button class="btn xl orange" id="b-cash" disabled>Cobrar S/${sum}</button>
+      <button class="btn xl orange" id="b-cash" disabled>Encaisser S/${sum}</button>
       <div class="cash-h">${chipIcon(t)}<div><small>Objectif ${fmt(st.target)}</small><b>Score ${fmt(st.score)}</b></div><span class="dots"></span><em>S/${rewardFor(st.tanda)}</em></div>
       <ul id="cash-l"></ul>
     </div>`, 'cashout');
@@ -776,7 +799,7 @@
 
   function nextTanda() {
     st.tanda++;
-    if (st.tanda > 2) { st.tanda = 0; st.noche++; pickBoss(); if (st.noche >= 4) Meta.unlock('noche4'); }
+    if (st.tanda > 2) { st.tanda = 0; st.noche++; pickBoss(); Meta.max('best', st.noche); if (st.noche >= 4) Meta.unlock('noche4'); }
     st.score = 0; st.target = 0;
     st.hands = st.handsBase; st.discards = st.discardsBase;
     selectPhase();
@@ -795,7 +818,8 @@
   function rollOffers() {
     const owned = new Set(st.supers.map(sc => sc.card.id)), out = [];
     for (let i = 0; i < 3; i++) {
-      const c = Supers.rollCard(DB.cards, new Set([...owned, ...out.map(o => o.card.id)]));
+      const pool = Unlocks.open();
+      const c = Supers.rollCard(pool.length ? pool : DB.cards, new Set([...owned, ...out.map(o => o.card.id)]));
       out.push(Supers.make(c, seriesOf(c)));
     }
     return out;
@@ -809,7 +833,7 @@
   function shopScreen(anim) {
     showCenter(`<div class="shop">
       <div class="shop-btns">
-        <button class="btn xl rosa" id="b-next">Tanda<br>suivante</button>
+        <button class="btn xl rosa" id="b-next">Manche<br>suivante</button>
         <button class="btn lg green" id="b-reroll">Relancer<br><b>S/${st.rerollCost}</b></button>
       </div>
       <div class="offers">${st.offers.map((sc, i) => sc ? `<div class="offer"><span class="price">S/${sc.price}</span>${superHTML(sc)}<button class="btn sm blue buy" data-buy="${i}">Recruter</button></div>` : '<div class="offer sold"><span>Vendu</span></div>').join('')}</div>
@@ -832,6 +856,7 @@
         st.supers.push(sc);
         st.offers[+b.dataset.buy] = null;
         st.recruited++;
+        Meta.add('recruited');
         Sfx.play('buy');
         renderSupers(sc.uid);
         shopScreen();
@@ -844,6 +869,7 @@
         setSoles(st.soles - 3);
         st.levels[o.h.id] = levelOf(o.h.id) + 1;
         o.sold = true;
+        Meta.add('cumbias');
         Sfx.play('level');
         toast(`${o.h.n} passe au niveau ${levelOf(o.h.id)}`);
         if (levelOf(o.h.id) >= 4) Meta.unlock('cumbia4');
@@ -859,7 +885,7 @@
     return `<div class="rstats">
       <div><small>Meilleure main</small><b>${fmt(st.bestHand)}</b></div>
       <div><small>Main la plus jouée</small><b>${most ? Poker.HAND_BY_ID[most[0]].n + ' ×' + most[1] : '—'}</b></div>
-      <div><small>Noche atteinte</small><b>${st.noche}/${NOCHES}</b></div>
+      <div><small>Nuit atteinte</small><b>${st.noche}/${NOCHES}</b></div>
       <div><small>Super cartes recrutées</small><b>${st.recruited}</b></div>
       <div><small>Deck · Mise</small><b>${esc(st.deck.n)} · ${Meta.STAKES[st.stake].n}</b></div>
     </div>`;
@@ -870,8 +896,8 @@
     flyAway(st.hand, true);
     st.hand = [];
     showPlay(false);
-    Meta.data.stats.best = Math.max(Meta.data.stats.best, st.noche); Meta.save();
-    showCenter(`<div class="end lose"><h2>Se acabó la fiesta</h2><p>Score ${fmt(st.score)} / ${fmt(st.target)}</p>${runStats()}
+    Meta.max('best', st.noche);
+    showCenter(`<div class="end lose"><h2>Fin de soirée</h2><p>Score ${fmt(st.score)} / ${fmt(st.target)}</p>${runStats()}
       <div class="acts"><button class="btn xl blue" id="b-again">Nouvelle partie</button><button class="btn lg orange" id="b-home">Menu</button></div></div>`, 'endc');
     $('#b-again').onclick = () => { Sfx.play('click'); newRunModal(); };
     $('#b-home').onclick = () => { Sfx.play('click'); title(); };
@@ -883,7 +909,7 @@
     Bg.set('win');
     confetti();
     const newStake = Meta.data.stake > before ? `<p class="unl">Nouvelle mise débloquée : <b style="color:${Meta.STAKES[Meta.data.stake].c}">${Meta.STAKES[Meta.data.stake].n}</b></p>` : '';
-    showCenter(`<div class="end win"><h2>¡Campeón de la noche!</h2>${newStake}
+    showCenter(`<div class="end win"><h2>Roi de la nuit !</h2>${newStake}
       <div class="band">${st.supers.map(sc => superHTML(sc)).join('')}</div>${runStats()}
       <div class="acts"><button class="btn xl blue" id="b-again">Nouvelle partie</button><button class="btn lg orange" id="b-home">Menu</button></div></div>`, 'endc');
     wireSupersIn($('#center'), st.supers);
@@ -903,14 +929,28 @@
   // ---------- achievement banner ----------
   const achQueue = [];
   let achBusy = false;
-  Meta.onUnlock((a, deck) => { achQueue.push([a, deck]); runAch(); });
+  Meta.onUnlock((a, deck) => {
+    achQueue.push(`<span class="trophy">🏆</span><span><small>Succès débloqué</small><b>${esc(a.n)}</b>${deck ? `<em style="--c:${deck.color}">Nouveau deck : ${deck.n}</em>` : `<i>${esc(a.d)}</i>`}</span>`);
+    runAch();
+  });
+  // A stat changed: unlock the cards whose condition is now met.
+  Meta.onStats(() => {
+    if (!DB.cards.length) return;
+    const fresh = Unlocks.check();
+    if (fresh.length > 3) {
+      achQueue.push(`<span class="trophy">🃏</span><span><small>Nouvelles cartes</small><b>${fresh.length} super cartes débloquées</b><i>Elles peuvent maintenant sortir dans la Bodega.</i></span>`);
+    } else fresh.forEach(c => {
+      achQueue.push(`<span class="unlk-art">${media(c)}</span><span><small>Carte débloquée</small><b>${esc(c.n)}</b><i>${Supers.TIERS[Supers.TIER_OF[c.r] || 1].n} · peut sortir dans la Bodega</i></span>`);
+    });
+    if (fresh.length) runAch();
+  });
   function runAch() {
     if (achBusy || !achQueue.length) return;
     achBusy = true;
-    const [a, deck] = achQueue.shift();
+    const html = achQueue.shift();
     const b = document.createElement('div');
     b.className = 'achpop';
-    b.innerHTML = `<span class="trophy">🏆</span><span><small>Succès débloqué</small><b>${esc(a.n)}</b>${deck ? `<em style="--c:${deck.color}">Nouveau deck : ${deck.n}</em>` : `<i>${esc(a.d)}</i>`}</span>`;
+    b.innerHTML = html;
     document.body.appendChild(b);
     Sfx.play('achieve');
     setTimeout(() => { b.classList.add('out'); setTimeout(() => { b.remove(); achBusy = false; runAch(); }, 400); }, 3200);
@@ -923,6 +963,8 @@
     const d = await ChichaData.load();
     DB = d;
     if (!DB.cards.length) DB.cards = (window.CHICHA_BASE || {}).cards || [];
+    Unlocks.init(DB.cards);
+    Unlocks.check();
     title();
   }
 

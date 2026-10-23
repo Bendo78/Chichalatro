@@ -25,8 +25,15 @@
     return { cards, series, backs: d.back || {} };
   }
 
-  // Keep cards that can be shown: they need a name. Photo-only cards are kept too.
-  const usable = c => c && c.id && c.n;
+  // Cards kept in the game:
+  // - they need a name and an illustration (photo or video)
+  // - in the "Legendary Pokemon" series, only the unique cards (limit 1, like "Giratina de Hoshi")
+  function usable(c, series) {
+    if (!c || !c.id || !c.n || !c.img) return false;
+    const s = series.find(x => x.id === c.s);
+    if (s && /legendary pok/i.test(s.n || '') && +c.lim !== 1) return false;
+    return true;
+  }
 
   async function fetchGame() {
     if (!sb) return null;
@@ -46,7 +53,7 @@
       if (data) source = 'supabase';
     } catch (e) { console.warn('Supabase indisponible', e); }
     const m = merge(data);
-    m.cards = m.cards.filter(usable);
+    m.cards = m.cards.filter(c => usable(c, m.series));
     return { source, user, online: !!sb, ...m };
   }
 

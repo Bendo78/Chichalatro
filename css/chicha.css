@@ -470,3 +470,21 @@ body.reduced { background: radial-gradient(120% 100% at 50% 0, #2a1033, #120a18)
   .menu-btns .btn { min-width: 130px; }
   .dp { grid-template-columns: 80px 1fr; } .deckcard { width: 80px; }
 }
+
+/* ---------- locked cards and unlock bubbles ---------- */
+.colhint { margin: -8px 0 16px; color: var(--mute); font-size: 13px; }
+.sc.locked .sc-f svg { position: absolute; inset: 0; width: 100%; height: 100%; filter: grayscale(.6) brightness(.55); }
+.sc.locked .lockico { position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; filter: drop-shadow(0 3px 0 #000); }
+.sc.locked .sc-name { color: var(--mute); }
+.bubble { position: absolute; z-index: 30; left: 50%; bottom: calc(100% + 10px); width: 200px; transform: translate(-50%, 6px) scale(.95); display: grid; gap: 5px; padding: 10px 12px; border-radius: 12px; background: var(--cream); color: var(--ink); box-shadow: 0 0 0 3px #0c0711, 0 6px 0 rgba(0, 0, 0, .45); text-align: center; opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; }
+.bubble::after { content: ""; position: absolute; left: 50%; top: 100%; margin-left: -9px; border: 9px solid transparent; border-top-color: var(--cream); }
+.bubble b { font: 400 11px var(--f-disp); color: var(--c-rosa); }
+.bubble span { font-weight: 700; font-size: 13px; line-height: 1.25; }
+.bubble small { font: 400 11px var(--f-disp); color: #6a5a77; }
+.bubble .bar { display: block; height: 7px; border-radius: 4px; background: #e2d6ea; overflow: hidden; }
+.bubble .bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--c-orange), var(--c-rosa)); }
+.sc.locked:hover .bubble, .sc.locked:focus .bubble, .sc.locked.show .bubble { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.grid .sc.locked:hover, .grid .sc.locked.show { z-index: 5; }
+.unlk-art { position: relative; width: 44px; aspect-ratio: 63 / 88; flex: none; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 2px #0c0711, 0 0 0 4px var(--gold); }
+.unlk-art img, .unlk-art video, .unlk-art .noart { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.bossrule i, .bl-rule i { display: block; font-weight: 400; font-size: 11.5px; color: var(--mute); margin-bottom: 3px; }
