@@ -97,13 +97,14 @@
   function countTo(el, from, to, ms) {
     return new Promise(res => {
       const t0 = performance.now(), d = ms / OPTS.speed; let tick = 0;
-      const f = now => {
-        const k = Math.min(1, (now - t0) / d), v = from + (to - from) * (1 - Math.pow(1 - k, 3));
+      // setTimeout instead of requestAnimationFrame: keeps going even if the tab is in the background
+      const f = () => {
+        const now = performance.now(), k = Math.min(1, (now - t0) / d), v = from + (to - from) * (1 - Math.pow(1 - k, 3));
         el.textContent = fmt(v);
         if (now - tick > 70) { Sfx.play('score'); tick = now; }
-        k < 1 ? requestAnimationFrame(f) : res();
+        k < 1 ? setTimeout(f, 16) : res();
       };
-      requestAnimationFrame(f);
+      f();
     });
   }
   function richEffect(t) {
@@ -486,13 +487,23 @@
   }
 
   // ---------- center panels (tanda choice, cash out, shop, end) ----------
+  // Each new panel gets a number, so a hide that finishes late never erases a newer panel.
+  let centerId = 0;
   function showCenter(html, cls) {
     const c = $('#center');
+    centerId++;
     c.className = 'center show ' + (cls || '');
     c.innerHTML = `<div class="cpanel">${html}</div>`;
     return c;
   }
-  function hideCenter() { const c = $('#center'); c.classList.add('hide'); setTimeout(() => { c.className = 'center'; c.innerHTML = ''; }, 250); }
+  function hideCenter() {
+    const c = $('#center'), id = centerId;
+    c.classList.add('hide');
+    return new Promise(res => setTimeout(() => {
+      if (id === centerId && c.isConnected) { c.className = 'center'; c.innerHTML = ''; }
+      res();
+    }, 250 / OPTS.speed));
+  }
   function showPlay(v) { $('#run').classList.toggle('playing', v); }
 
   // ---------- tanda choice ----------
@@ -846,7 +857,12 @@
           ${o.sold ? '<span class="tag">Écouté</span>' : `<button class="btn sm blue" data-cum="${i}">Écouter</button>`}</div>`;
       }).join('')}</div>
     </div>`, 'shopc' + (anim ? '' : ' still'));
-    $('#b-next').onclick = () => { Sfx.play('click'); hideCenter(); setTimeout(nextTanda, 200); };
+    $('#b-next').onclick = async e => {
+      e.currentTarget.disabled = true;
+      Sfx.play('click');
+      await hideCenter();
+      nextTanda();
+    };
     const rr = $('#b-reroll');
     rr.disabled = st.soles < st.rerollCost;
     rr.onclick = () => { if (st.soles < st.rerollCost) return; setSoles(st.soles - st.rerollCost); st.rerollCost++; st.offers = rollOffers(); Sfx.play('shuffle'); shopScreen(); };
