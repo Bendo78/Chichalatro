@@ -88,7 +88,14 @@
   m.stats = Object.assign(blank().stats, m.stats);
   m.stats.hands = m.stats.hands || {};
   m.cards = m.cards || {};
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(m)); } catch (e) { } }
+  const saveListeners = [];
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(m)); } catch (e) { } saveListeners.forEach(fn => fn(m)); }
+  // Replace the whole progress (used when a save is loaded from the cloud).
+  function load(obj) {
+    m = Object.assign(blank(), obj || {});
+    m.stats = Object.assign(blank().stats, m.stats); m.stats.hands = m.stats.hands || {}; m.cards = m.cards || {}; m.ach = m.ach || {}; m.deckWins = m.deckWins || {};
+    try { localStorage.setItem(KEY, JSON.stringify(m)); } catch (e) { }
+  }
 
   const listeners = [], statListeners = [];
   function unlock(id) {
@@ -152,6 +159,7 @@
     save, unlock, deckUnlocked, deckReq, winRun, add, max, addHand,
     onUnlock: fn => listeners.push(fn),
     onStats: fn => statListeners.push(fn),
-    reset() { m = blank(); save(); }
+    reset() { m = blank(); save(); },
+    load, onSave: fn => saveListeners.push(fn)
   };
 })();

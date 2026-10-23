@@ -273,6 +273,9 @@
     const n = DB.cards.length;
     app().innerHTML = `<section class="title">
       ${Art.logo('big')}
+      <div class="player">${Cloud.pseudo
+        ? `<span class="pdot ${Cloud.status}"></span>Joueur : <b>${esc(Cloud.pseudo)}</b><small id="p-status">${cloudLabel()}</small><button class="link" id="b-pseudo">Changer</button>`
+        : `<span class="pdot off"></span><span>Ta progression n'est enregistrée que sur cet appareil.</span><button class="btn sm rosa" id="b-pseudo">Choisir un pseudo</button>`}</div>
       <div class="menu-btns">
         <button class="btn xl blue" id="b-play">Jouer</button>
         <button class="btn xl orange" id="b-opt">Options</button>
@@ -291,6 +294,41 @@
     $('#b-stats').onclick = () => { Sfx.play('click'); statsModal(); };
     $('#b-skin').onclick = () => { Sfx.play('click'); skinsModal(); };
     $('#b-login').onclick = DB.user ? async () => { await ChichaData.signOut(); boot(); } : loginForm;
+    $('#b-pseudo').onclick = () => { Sfx.play('click'); pseudoModal(); };
+  }
+
+  // ---------- pseudo: links the progress to a player, saved online ----------
+  const cloudLabel = () => ({ ok: 'sauvegardé en ligne', saving: 'sauvegarde…', error: 'hors ligne, sauvegardé sur cet appareil', off: '' }[Cloud.status] || '');
+  Cloud.onStatus(s => {
+    const el = document.getElementById('p-status'); if (el) el.textContent = cloudLabel();
+    const dot = document.querySelector('.player .pdot'); if (dot) dot.className = 'pdot ' + s;
+  });
+  function pseudoModal(first) {
+    const ov = modal(`<form id="pf" class="form">
+      <h2>${first ? 'Bienvenue au ChichaClub !' : 'Ton pseudo'}</h2>
+      <p class="mute small">Entre un pseudo pour sauvegarder ta progression en ligne (succès, cartes et decks débloqués, stats, skins). Pour la retrouver sur un autre appareil, entre le même pseudo.</p>
+      <label>Pseudo<input name="p" required minlength="3" maxlength="20" autocomplete="nickname" placeholder="ex. roi-du-kebab" value="${esc(Cloud.pseudo || '')}"></label>
+      <p class="mute small">3 à 20 caractères : lettres, chiffres, - ou _. Pas de mot de passe : choisis un pseudo que les autres ne devineront pas.</p>
+      <p class="err" hidden></p>
+      <div class="acts"><button class="btn blue" type="submit">Valider</button>${Cloud.pseudo ? '<button class="btn" type="button" id="pf-out">Se déconnecter</button>' : ''}<button class="btn" type="button" id="pf-x">${first ? 'Jouer sans pseudo' : 'Annuler'}</button></div>
+    </form>`);
+    ov.querySelector('#pf-x').onclick = ov.close;
+    const out = ov.querySelector('#pf-out');
+    if (out) out.onclick = () => { Cloud.logout(); ov.close(); toast('Déconnecté : la progression reste sur cet appareil'); title(); };
+    ov.querySelector('#pf').onsubmit = async e => {
+      e.preventDefault();
+      const f = e.target, err = f.querySelector('.err'), btn = f.querySelector('[type=submit]');
+      btn.disabled = true;
+      try {
+        const res = await Cloud.login(f.p.value);
+        ov.close();
+        applySkin();
+        Unlocks.check();
+        toast(res === 'loaded' ? `Content de te revoir, ${Cloud.pseudo} ! Progression chargée.` : `Pseudo ${Cloud.pseudo} créé : ta progression est sauvegardée en ligne.`);
+        Sfx.play('achieve');
+        title();
+      } catch (x) { err.hidden = false; err.textContent = x.message || 'Impossible de se connecter'; btn.disabled = false; }
+    };
   }
 
   function loginForm() {
@@ -1617,8 +1655,14 @@
     if (!DB.cards.length) DB.cards = (window.CHICHA_BASE || {}).cards || [];
     Unlocks.init(DB.cards);
     Supers.init(DB.cards);
+    const had = await Cloud.resume();
+    applySkin();
     Unlocks.check();
     title();
+    // first visit on this device: offer to pick a pseudo
+    let asked = false;
+    try { asked = !!localStorage.getItem('chichalatro-asked'); localStorage.setItem('chichalatro-asked', '1'); } catch (e) { }
+    if (!had && !asked) pseudoModal(true);
   }
 
   window.addEventListener('resize', () => {

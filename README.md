@@ -84,3 +84,38 @@ Cards are read from the CHICHA TCG Supabase project: table `game`, row `id = 1`.
 - `css/chicha.css`: the look
 
 Debug in the browser console: `ChichaGame.state()`, `ChichaGame.give(20)` (adds 20 €).
+
+## Mettre le jeu en ligne (GitHub Pages) avec sauvegarde par pseudo
+
+### 1. Activer la sauvegarde en ligne (une seule fois)
+
+Dans Supabase (projet `spqzemkmgjwmrrqpxzvh`) : **SQL Editor → New query**, colle le contenu de [`supabase/players.sql`](supabase/players.sql), puis **Run**.
+Ça crée la table `chichalatro_players` : une ligne par joueur, retrouvée par son pseudo.
+
+### 2. Envoyer le jeu sur GitHub
+
+1. Sur github.com : **New repository**, nom `chichalatro`, visibilité **Public** (GitHub Pages est gratuit pour les dépôts publics), sans README.
+2. Dans le dossier du jeu :
+
+```
+git remote add origin https://github.com/TON-COMPTE/chichalatro.git
+git push -u origin main
+```
+
+### 3. Activer GitHub Pages
+
+Sur la page du dépôt : **Settings → Pages → Build and deployment → Source : Deploy from a branch**, branche `main`, dossier `/ (root)`, **Save**.
+Au bout d'une minute, le jeu est en ligne sur `https://TON-COMPTE.github.io/chichalatro/`.
+
+### Comment marche la sauvegarde
+
+- À la première visite, le jeu propose de choisir un pseudo (on peut aussi jouer sans).
+- Toute la progression (succès, cartes et decks débloqués, mises, stats, records, skin) est sauvegardée en ligne sous ce pseudo, automatiquement.
+- Sur un autre appareil, il suffit d'entrer le même pseudo pour tout retrouver. L'appareil retient le dernier pseudo utilisé.
+- Il n'y a pas de mot de passe : quelqu'un qui tape ton pseudo accède à ta sauvegarde. Choisis un pseudo difficile à deviner.
+- Une partie en cours n'est pas sauvegardée (seule la progression entre les parties l'est).
+
+### À savoir
+
+- Les musiques du dossier `music/` ne sont pas envoyées sur GitHub (elles sont dans `.gitignore`). En ligne, le jeu joue ses propres morceaux.
+- La clé Supabase dans `js/data.js` est la clé publique (« publishable ») : elle est faite pour être visible dans le navigateur.

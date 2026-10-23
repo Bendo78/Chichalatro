@@ -72,5 +72,5 @@
     return '';
   }
 
-  window.ChichaData = { load, signIn, signOut, photo, STORAGE };
+  window.ChichaData = { load, signIn, signOut, photo, STORAGE, client: () => sb };
 })();
