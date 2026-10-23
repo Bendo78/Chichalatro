@@ -1,19 +1,21 @@
-/* Loads the CHICHA TCG cards from Supabase.
-   The cards live in table `game` (row id 1, column `data`), the same way the TCG stores them:
-   all cards = base set (minus removed, with overrides) + cards added by the admin.
-   Reading that row needs either a public read policy or a signed-in TCG account.
-   Without either, the game falls back to the base set bundled in data/base-cards.js. */
+/* Loads the cards from Supabase.
+   Two possible sources, tried in this order:
+   1. the clean game database (tables `cards` and `series`, created by supabase/schema.sql)
+   2. the old CHICHA TCG data (table `game`, row id 1), kept for compatibility
+   Without either one, the game falls back to the base set bundled in data/base-cards.js.
+   The project address and public key are in js/config.js. */
 (function () {
-  const SB_URL = 'https://spqzemkmgjwmrrqpxzvh.supabase.co';
-  const SB_KEY = 'sb_publishable_4WCnVSnLD42uiH8iXsUe8A_X43xpJat'; // publishable key: safe in the browser
+  const CFG = window.CHICHA_CONFIG || {};
+  const SB_URL = CFG.url;
+  const SB_KEY = CFG.key; // publishable key: safe in the browser
   const STORAGE = SB_URL + '/storage/v1/object/public/cards/';
 
   const base = window.CHICHA_BASE || { series: [], cards: [] };
   let sb = null;
-  try { if (window.supabase) sb = window.supabase.createClient(SB_URL, SB_KEY); } catch (e) { sb = null; }
+  try { if (window.supabase && SB_URL && SB_KEY) sb = window.supabase.createClient(SB_URL, SB_KEY); } catch (e) { sb = null; }
 
-  // Same merge rule as the TCG.
-  function merge(d) {
+  // Old TCG format: base set (minus removed, with overrides) + cards added by the admin.
+  function mergeOld(d) {
     d = d || {};
     const rm = d.rm || [], ov = d.ov || {}, mv = d.mv || {};
     const cards = base.cards.filter(c => !rm.includes(c.id)).map(c => {
@@ -23,6 +25,19 @@
     }).concat(d.cards || []);
     const series = base.series.concat(d.series || []);
     return { cards, series, backs: d.back || {} };
+  }
+
+  // Clean format (tables cards + series) -> the internal card shape used by the game.
+  function fromClean(rows, srows) {
+    const series = srows.map(s => ({ id: s.id, code: s.code, n: s.name, c1: s.color1, c2: s.color2 }));
+    const backs = {};
+    srows.forEach(s => { if (s.back_image) backs[s.id] = photo({ img: s.back_image }); });
+    const cards = rows.map(r => ({
+      id: r.id, s: r.series_id, n: r.name, r: r.rarity, t: r.type, pv: r.hp, an: r.attack_name, a: r.attack,
+      f: r.description, img: r.image, img2: r.image2, fx: r.frame_x, fy: r.frame_y, fz: r.frame_zoom,
+      lim: r.card_limit, n2: r.name2, duo: r.duo
+    }));
+    return { cards, series, backs };
   }
 
   // Cards kept in the game:
@@ -35,24 +50,34 @@
     return true;
   }
 
-  async function fetchGame() {
+  async function fetchClean() {
+    if (!sb) return null;
+    const [c, s] = await Promise.all([
+      sb.from('cards').select('*').order('sort', { ascending: true }),
+      sb.from('series').select('*')
+    ]);
+    if (c.error || s.error || !c.data || !c.data.length) return null;
+    return fromClean(c.data, s.data || []);
+  }
+  async function fetchOld() {
     if (!sb) return null;
     const r = await sb.from('game').select('data').eq('id', 1).maybeSingle();
     if (r.error || !r.data || !r.data.data) return null;
-    return r.data.data;
+    return mergeOld(r.data.data);
   }
 
   async function load() {
-    let source = 'base', data = null, user = null;
+    let source = 'base', m = null, user = null;
     try {
       if (sb) {
         const s = await sb.auth.getSession();
         user = s.data && s.data.session ? s.data.session.user : null;
       }
-      data = await fetchGame();
-      if (data) source = 'supabase';
+      m = await fetchClean();
+      if (m) source = 'supabase';
+      else { m = await fetchOld(); if (m) source = 'supabase'; }
     } catch (e) { console.warn('Supabase indisponible', e); }
-    const m = merge(data);
+    if (!m) m = mergeOld(null);
     m.cards = m.cards.filter(c => usable(c, m.series));
     return { source, user, online: !!sb, ...m };
   }
@@ -65,11 +90,10 @@
   }
   async function signOut() { if (sb) await sb.auth.signOut(); }
 
-  // Photo for a card: the TCG stores a URL (or data URL) in `img`.
+  // Photo for a card: a full URL, a data URL, or a file name in the "cards" bucket.
   function photo(c) {
-    if (!c) return '';
-    if (c.img) return c.img.startsWith('http') || c.img.startsWith('data:') ? c.img : STORAGE + c.img;
-    return '';
+    if (!c || !c.img) return '';
+    return c.img.startsWith('http') || c.img.startsWith('data:') ? c.img : STORAGE + encodeURIComponent(c.img);
   }
 
   window.ChichaData = { load, signIn, signOut, photo, STORAGE, client: () => sb };
