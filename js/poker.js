@@ -19,7 +19,11 @@
     { id: 'flush', n: 'Couleur', c: 35, m: 4, lc: 15, lm: 2 },
     { id: 'full', n: 'Full', c: 40, m: 4, lc: 25, lm: 2 },
     { id: 'four', n: 'Carré', c: 60, m: 7, lc: 30, lm: 3 },
-    { id: 'sflush', n: 'Quinte flush', c: 100, m: 8, lc: 40, lm: 4 }
+    { id: 'sflush', n: 'Quinte flush', c: 100, m: 8, lc: 40, lm: 4 },
+    // secret hands: only possible with copied or Caméléon cards, hidden until played once
+    { id: 'five', n: 'Cinq pareils', c: 120, m: 12, lc: 35, lm: 3, secret: true },
+    { id: 'fhouse', n: 'Full couleur', c: 140, m: 14, lc: 40, lm: 4, secret: true },
+    { id: 'ffive', n: 'Couleur parfaite', c: 160, m: 16, lc: 50, lm: 3, secret: true }
   ];
   const HAND_BY_ID = Object.fromEntries(HANDS.map((h, i) => [h.id, Object.assign({ i }, h)]));
 
@@ -73,6 +77,8 @@
     const straight = straightCards(normal);
     const res = (id, sc) => ({ hand: pick(id), scoring: withStones(sc) });
 
+    if (g[0].length >= 5) return res(flush ? 'ffive' : 'five', normal);
+    if (flush && g[0].length === 3 && g[1] && g[1].length >= 2) return res('fhouse', normal);
     if (flush && straight) return res('sflush', normal);
     if (g[0].length >= 4) return res('four', g[0].slice(0, 4));
     if (g[0].length === 3 && g[1] && g[1].length >= 2) return res('full', normal);
@@ -87,11 +93,13 @@
 
   // "Contains" checks used by super cards (a Full contains a Paire and a Brelan, etc.).
   const CONTAINS = {
-    pair: ['pair', 'two', 'three', 'full', 'four'],
-    two: ['two', 'full'],
-    three: ['three', 'full', 'four'],
+    pair: ['pair', 'two', 'three', 'full', 'four', 'five', 'fhouse', 'ffive'],
+    two: ['two', 'full', 'fhouse'],
+    three: ['three', 'full', 'four', 'five', 'fhouse', 'ffive'],
     straight: ['straight', 'sflush'],
-    flush: ['flush', 'sflush']
+    flush: ['flush', 'sflush', 'fhouse', 'ffive'],
+    full: ['full', 'fhouse'],
+    four: ['four', 'five', 'ffive']
   };
   const contains = (handId, what) => (CONTAINS[what] || [what]).includes(handId);
 

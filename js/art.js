@@ -128,12 +128,15 @@
 
   function cardFace(card) {
     const E = card.enh && window.Items && Items.ENH[card.enh];
-    if (!E) return cardFaceBase(card);
+    // seal (wax stamp in the corner) and edition (animated overlay)
+    const extra = (card.seal && window.Items && Items.SEALS[card.seal] ? `<span class="seal seal-${card.seal}"></span>` : '')
+      + (card.ed ? `<span class="ced ced-${card.ed}"></span>` : '');
+    if (!E) return cardFaceBase(card) + extra;
     const ic = window.Icons ? Icons.svg(E.ico) : '';
     // themed background + big faded watermark + corner medallion + name ribbon
     const deco = `<span class="enh-bg"></span><span class="enh-wm">${ic}</span><span class="enh-med">${ic}</span><span class="enh-rib">${E.n}</span>`;
-    if (card.enh === 'pierre') return `<span class="stone"></span>${deco}`;
-    return deco + cardFaceBase(card);
+    if (card.enh === 'pierre') return `<span class="stone"></span>${deco}${extra}`;
+    return deco + cardFaceBase(card) + extra;
   }
   function cardFaceBase(card) {
     const lb = Poker.label(card), s = SUIT_SYM[card.suit];

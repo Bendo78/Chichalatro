@@ -733,3 +733,92 @@ body.reduced .calc.inferno { animation: none; }
 .bl.next, .bl.done { transform: none; }
 .bl.next { filter: brightness(.65); } .bl.done { filter: grayscale(.7) brightness(.5); }
 .center.show { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.2) transparent; }
+
+/* ===== v5: stickers, seals, card editions, tags, streak, Fantôme, skins ===== */
+
+/* stickers on super cards */
+.stk { position: absolute; z-index: 4; left: 5px; bottom: 30px; padding: 2px 6px; border-radius: 4px; font: 400 8px/1.2 var(--f-disp); color: #fff; box-shadow: 0 0 0 1.5px var(--ink); transform: rotate(-6deg); }
+.stk-colle { background: #8a2be2; }
+.stk-perime { background: #6e655b; }
+.stk-location { background: #13b86b; }
+.sc.dead .sc-f img, .sc.dead .sc-f video, .sc.dead .sc-f .noart { filter: grayscale(1) brightness(.45); }
+.sc.dead .sc-name { text-decoration: line-through; color: var(--mute); }
+.mini.sell:disabled { background: #5a4a66; color: #cbbdd6; cursor: not-allowed; }
+
+/* seals: wax stamp, bottom-left corner */
+.seal { position: absolute; z-index: 5; left: 4cqw; bottom: 14cqh; width: 20cqw; height: 20cqw; border-radius: 50%; box-shadow: 0 0 0 1cqw var(--ink), inset 0 0 0 2cqw rgba(255, 255, 255, .25), 0 1.2cqw 0 1cqw rgba(0, 0, 0, .3); }
+.seal::after { content: ""; position: absolute; inset: 28%; border-radius: 50%; border: 1cqw solid rgba(255, 255, 255, .55); }
+.seal-or { background: radial-gradient(circle at 35% 30%, #fff1b8, #ffc93c 45%, #b37a00); }
+.seal-rouge { background: radial-gradient(circle at 35% 30%, #ffb3c0, #ff3355 45%, #8a0f24); }
+.seal-bleu { background: radial-gradient(circle at 35% 30%, #c9f2ff, #18d6ff 45%, #0a5f91); }
+.seal-violet { background: radial-gradient(circle at 35% 30%, #e8c8ff, #a43bff 45%, #4c137a); }
+
+/* editions on playing cards */
+.ced { position: absolute; inset: 0; z-index: 4; pointer-events: none; border-radius: inherit; }
+.ced-neon { background: linear-gradient(120deg, transparent 20%, rgba(24, 214, 255, .45) 40%, transparent 55%); background-size: 240% 100%; animation: sheen 2.6s linear infinite; mix-blend-mode: multiply; box-shadow: inset 0 0 0 1.4cqw #18d6ff; }
+.ced-holo { background: repeating-linear-gradient(110deg, rgba(255, 46, 136, .22) 0 6%, rgba(255, 230, 0, .22) 6% 12%, rgba(43, 255, 110, .22) 12% 18%, rgba(24, 214, 255, .22) 18% 24%); background-size: 300% 300%; animation: holo 5s linear infinite; mix-blend-mode: multiply; }
+.ced-arc { background: conic-gradient(from 0deg, rgba(255, 46, 136, .3), rgba(255, 230, 0, .3), rgba(43, 255, 110, .3), rgba(24, 214, 255, .3), rgba(164, 59, 255, .3), rgba(255, 46, 136, .3)); animation: chipspin 6s linear infinite; mix-blend-mode: multiply; }
+
+/* tags */
+.tag-ico { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 4px; border-radius: 50%; background: var(--tg); box-shadow: 0 0 0 2px var(--ink), inset 0 0 0 2px rgba(255, 255, 255, .35); flex: none; }
+.tags-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 10px; background: var(--panel2); }
+.tags-row small { margin-right: 4px; }
+.skip-tag { display: flex; align-items: center; gap: 8px; text-align: left; font-size: 11.5px; color: var(--mute); max-width: 190px; }
+.skip-tag b { display: block; color: #fff; font-size: 12px; }
+.bl-skip.dim .skip-tag { justify-content: center; }
+
+/* streak */
+.streak { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 6px; background: linear-gradient(90deg, #ff7a00, #ff2e5f); color: #fff; font: 400 12px var(--f-disp); vertical-align: middle; box-shadow: 0 0 12px rgba(255, 90, 40, .7); animation: tbump .4s; }
+
+/* Fantôme cards and level-2 tickets */
+.fan-ico { position: absolute; left: 32%; right: 32%; top: 26%; height: 30%; }
+.fan-ico .ic { animation: float 2.4s ease-in-out infinite alternate; filter: drop-shadow(0 0 6px rgba(191, 230, 255, .8)); }
+.fan-nm { bottom: 9% !important; color: var(--ink) !important; text-shadow: none !important; font-size: 7.6px !important; }
+.tkt-lvl { position: absolute; top: -6%; left: -6%; padding: 2px 6px; border-radius: 6px; background: #fff6e6; color: var(--ink); font: 400 11px var(--f-disp); box-shadow: 0 0 0 2px var(--ink); transform: rotate(-10deg); }
+
+/* skins menu */
+.btn.skinbtn { --b: #13b8a8; --bd: #0a6b62; min-width: 150px; }
+.skins { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.skinc { display: grid; gap: 6px; justify-items: center; padding: 10px; border: 0; border-radius: 12px; background: var(--panel2); color: var(--txt); text-align: center; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .06); cursor: pointer; }
+.skinc.on { box-shadow: inset 0 0 0 3px var(--amarillo); }
+.skinc.locked { opacity: .5; cursor: not-allowed; }
+.skinc b { font: 400 14px var(--f-disp); }
+.skinc small { font-size: 11.5px; color: var(--mute); }
+.skin-cards { display: flex; gap: 4px; }
+.skin-cards .mpc { width: 46px; cursor: inherit; }
+
+/* --- skin: Bloc (chunky pixel cubes) --- */
+.skin-bloc .face { border-radius: 0 !important; background: repeating-conic-gradient(#efe6d2 0 25%, #e4d9c1 0 50%) 0 0 / 12.5% 8.9% !important; box-shadow: 0 0 0 3px var(--ink), inset 0 0 0 6cqw rgba(0, 0, 0, .06), 6px 6px 0 rgba(0, 0, 0, .45) !important; image-rendering: pixelated; }
+.skin-bloc .face::after { display: none; }
+.skin-bloc .cn, .skin-bloc .pips b, .skin-bloc .ace b { font-family: 'Pixelify Sans', var(--f-disp) !important; font-weight: 700; text-shadow: 1cqw 1cqw 0 rgba(0, 0, 0, .25); }
+.skin-bloc .ace .sun { border-radius: 0; animation: none; }
+.skin-bloc .bk svg, .skin-bloc .deckstack svg { filter: contrast(1.3) saturate(.6); border-radius: 0; }
+.skin-bloc .bk, .skin-bloc .deckstack svg { border-radius: 0; }
+
+/* --- skin: Néon --- */
+.skin-neon .face { background: #120a18 !important; box-shadow: 0 0 0 2px var(--sc), 0 0 14px var(--sc), 0 5px 0 rgba(0, 0, 0, .5) !important; }
+.skin-neon .face::after { display: none; }
+.skin-neon .cn, .skin-neon .pips b, .skin-neon .ace b { color: var(--sc); text-shadow: 0 0 6px var(--sc), 0 0 14px var(--sc); }
+.skin-neon .s-C { --sc: #ff2e88; } .skin-neon .s-K { --sc: #ff9a3c; } .skin-neon .s-T { --sc: #2bff6e; } .skin-neon .s-P { --sc: #18d6ff; }
+.skin-neon .court { filter: brightness(.9) saturate(1.3); }
+
+/* --- skin: Croquis --- */
+.skin-kraft .face { background: #d8c3a0 !important; box-shadow: 0 0 0 2px #3b2a1a, 0 5px 0 rgba(0, 0, 0, .4) !important; }
+.skin-kraft .face::after { background: repeating-linear-gradient(0deg, transparent 0 3cqw, rgba(59, 42, 26, .08) 3cqw 3.4cqw); }
+.skin-kraft .cn, .skin-kraft .pips b, .skin-kraft .ace b { color: #3b2a1a !important; font-family: 'Rubik', serif; }
+.skin-kraft .s-C .cn, .skin-kraft .s-K .cn, .skin-kraft .s-C .pips b, .skin-kraft .s-K .pips b, .skin-kraft .s-C .ace b, .skin-kraft .s-K .ace b { color: #a3241a !important; }
+.skin-kraft .court { filter: sepia(.8) contrast(1.1); }
+.skin-kraft .ace .sun { filter: sepia(1); opacity: .35; }
+
+/* --- skin: Arcade --- */
+.skin-arcade .face { background: #0f2a12 !important; box-shadow: 0 0 0 2px #2bff6e, 0 5px 0 rgba(0, 0, 0, .5) !important; border-radius: 4% !important; }
+.skin-arcade .face::after { background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .25) 0 1px, transparent 1px 3px); }
+.skin-arcade .cn, .skin-arcade .pips b, .skin-arcade .ace b { color: #7dff9a !important; font-family: 'Pixelify Sans', monospace !important; text-shadow: 0 0 6px #2bff6e; }
+.skin-arcade .court { filter: grayscale(1) sepia(1) hue-rotate(70deg) saturate(3) brightness(.9); }
+.skin-arcade .ace .sun { filter: grayscale(1) sepia(1) hue-rotate(70deg) saturate(4); }
+
+/* --- skin: Luxe --- */
+.skin-luxe .face { background: linear-gradient(160deg, #1a1420, #0c080f) !important; box-shadow: 0 0 0 2px #ffc93c, inset 0 0 0 3cqw rgba(255, 201, 60, .25), 0 5px 0 rgba(0, 0, 0, .5) !important; }
+.skin-luxe .cn, .skin-luxe .pips b, .skin-luxe .ace b { color: #ffd36b !important; text-shadow: 0 1cqw 0 rgba(0, 0, 0, .5); }
+.skin-luxe .face::after { background: linear-gradient(115deg, transparent 35%, rgba(255, 220, 140, .35) 48%, transparent 60%); background-size: 250% 100%; animation: sheen 3.5s linear infinite; }
+.skin-luxe .court { filter: sepia(.6) saturate(1.4) hue-rotate(-10deg); }

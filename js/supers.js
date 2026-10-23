@@ -122,6 +122,24 @@
   add('$_pair', 'money', t => ({ text: `Chaque main contenant une Paire rapporte ${t} €`, afterHand: c => has(c, 'pair') ? { money: t } : null }));
   add('$_boss', 'money', t => ({ text: `+${5 * t} € quand tu bats un boss`, endRound: st => st.tanda === 2 ? 5 * t : 0 }));
 
+  // Special mechanics
+  add('s_copyr', 'psy', t => ({ text: 'Copie le pouvoir de la super carte à sa droite', copy: 'right' }));
+  add('s_copyl', 'psy', t => ({ text: 'Copie le pouvoir de la super carte la plus à gauche', copy: 'left' }));
+  add('s_sell', 'money', t => ({ text: `Sa valeur de revente monte de ${t} € à chaque manche`, endRound: (st, sc) => { sc.sellBonus = (sc.sellBonus || 0) + t; return 0; } }));
+  add('s_decay', 'xmult', t => ({ text: `${X(1 + t)} Mult, perd ${X(.1).slice(1)} à chaque main jouée`, grow: 'x', store0: t, onPlayed: (c, sc) => { if (sc.store.n == null) sc.store.n = t; }, afterHand: (c, sc) => { const v = sc.store.n == null ? t : sc.store.n; sc.store.n = Math.max(0, Math.round((v - .1) * 100) / 100); return v > 0 ? { xmult: 1 + v } : null; } }));
+  add('s_chance', 'xmult', t => ({ text: `1 chance sur 4 : ${X(1 + t)} Mult`, afterHand: () => Math.random() < .25 ? { xmult: 1 + t } : null }));
+  add('s_cycle', 'xmult', t => ({ text: `Toutes les 5 mains jouées : ${X(2 + t * .5)} Mult`, onPlayed: (c, sc) => { sc.store.k = ((sc.store.k || 0) + 1); }, afterHand: (c, sc) => sc.store.k % 5 === 0 ? { xmult: 2 + t * .5 } : null }));
+  add('s_voy', 'mult', t => ({ text: `+${2 * t} Mult par carte Voyance utilisée cette partie`, afterHand: c => c.runVoy ? { mult: 2 * t * c.runVoy } : null }));
+  add('s_eat', 'grow', t => grows('mult', { text: `Gagne +${2 * t} Mult chaque fois qu'une carte est détruite`, onDestroy: (n, sc) => { sc.store.n = (sc.store.n || 0) + 2 * t * n; } }));
+  add('s_enhdeck', 'mult', t => ({ text: `+${t} Mult par carte améliorée dans ton deck`, afterHand: c => { const n = c.deck.filter(x => x.enh).length; return n ? { mult: t * n } : null; } }));
+  add('s_steel', 'xmult', t => ({ text: `${X(1 + .1 * t)} Mult par carte Acier dans ton deck`, afterHand: c => { const n = c.deck.filter(x => x.enh === 'acier').length; return n ? { xmult: 1 + .1 * t * n } : null; } }));
+  add('s_gold', 'money', t => ({ text: `+${t} € par carte Or dans ton deck en fin de manche`, endRound: st => t * st.cards.filter(x => x.enh === 'or').length }));
+  add('s_kings', 'xmult', t => ({ text: `Chaque Roi resté en main donne ${X(1 + .15 * t)} Mult`, afterHand: c => { const n = c.held.filter(x => rk(x, 'K')).length; return n ? { xmult: Math.pow(1 + .15 * t, n) } : null; } }));
+  add('s_queens', 'mult', t => ({ text: `Chaque Dame restée en main donne +${5 * t} Mult`, afterHand: c => { const n = c.held.filter(x => rk(x, 'Q')).length; return n ? { mult: 5 * t * n } : null; } }));
+  add('s_lowheld', 'mult', t => ({ text: `Ajoute ${t + 1}× la valeur de la plus petite carte restée en main au Mult`, afterHand: c => { const v = c.held.filter(x => !stone(x)).map(x => Math.min(x.v, 10)); return v.length ? { mult: (t + 1) * Math.min(...v) } : null; } }));
+  add('s_facedisc', 'money', t => ({ text: 'Chaque figure défaussée rapporte 1 €', onDiscardCards: cards => cards.filter(face).length }));
+  add('s_secret', 'xmult', t => ({ text: `${X(2 + t)} Mult sur les mains secrètes`, afterHand: c => ['five', 'fhouse', 'ffive'].includes(c.hand.id) ? { xmult: 2 + t } : null }));
+
   const BY_KEY = Object.fromEntries(T.map(x => [x.key, x]));
 
   // ---------- assignment: one different effect per card ----------

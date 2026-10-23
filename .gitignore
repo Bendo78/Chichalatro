@@ -1,3 +1,4 @@
 music/*.mp3
 music/*.ogg
 music/*.m4a
+music/playlist.json

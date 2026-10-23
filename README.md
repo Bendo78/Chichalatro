@@ -6,7 +6,13 @@ All code, art (clown logo, playing cards, card backs), sounds and music are orig
 
 ## Your own music
 
-Put audio files you have the rights to in the `music` folder: `menu.mp3` (menu and collection) and `game.mp3` (during a run). `.ogg` and `.m4a` work too. The game plays them instead of its own tracks. These files are ignored by git.
+Put audio files you have the rights to in the `music` folder and list them in `music/playlist.json`:
+
+```json
+{ "menu": ["menu1.mp3", "menu2.mp3"], "game": ["game1.mp3", "game2.mp3"] }
+```
+
+The menu songs play in order, the game songs play shuffled. Without a playlist, `music/menu.mp3` and `music/game.mp3` are used; without files, the built-in tracks play. Audio files and the playlist are ignored by git: do not publish the game with music you do not own.
 
 ## Run it
 
@@ -27,6 +33,14 @@ npx serve .
   - **Vinyles**: level up one poker hand.
   - **Tickets VIP** (12): permanent bonuses for the run (+1 hand, +1 discard, +1 card in hand, +1 super card slot, discounts…).
   - **Pochettes**: choose 1 card among 4 (or 2 among 5 for the Méga ones): super cards, Voyance, Vinyles or new playing cards for your deck.
+- **Tags**: skipping L'Apéro or La Soirée gives a Tag (free Méga Pochette, free Holo super card, free rerolls, double your money, +1 hand…).
+- **Stickers** (from Mise Verte): super cards can come Collée (cannot be sold), Périmée (stops working after 5 rounds) or en Location (1 € to buy, 3 € each round).
+- **Cartes Fantôme** (Pochette Fantôme): very strong effects with a cost: a Légendaire for all your money, seals, editions on playing cards, copies, +1 level to every hand…
+- **Seals** on playing cards: doré (+3 €), rouge (replayed), bleu (Vinyle at the end of the round), violet (Voyance when discarded). Playing cards can also get an edition (Néon, Holo, Arc-en-ciel).
+- **Secret hands**: Cinq pareils, Full couleur, Couleur parfaite (possible with copies and Caméléon cards), hidden until played once.
+- **Tickets VIP level 2**: each ticket has a stronger version offered once you own the first one.
+- **Streaks and flames**: flames appear when a single hand reaches the whole target, and grow when big hands chain.
+- **Skins** (title menu): Chicha, Bloc, Néon, Croquis, Arcade, Luxe, unlocked with achievements.
 - **Mutations**: playing cards can get an enhancement (Bonus, Piment, Caméléon, Verre, Acier, Or, Chance, Pierre); super cards can come with an edition (Néon +50 chips, Holo +10 Mult, Arc-en-ciel ×1.5 Mult, Négatif +1 slot).
 - **Combos tab**: the pink tab next to the side panel (or *Infos run*) lists every poker hand with its level, chips × Mult and how often you played it.
 - **Winning**: beat the boss of night 8 to win the game. You can then continue in endless mode (targets keep growing) to push your record.
@@ -48,7 +62,7 @@ Each CHICHA TCG card becomes a super card:
 | Rarity `C U` / `H R X` / `E P N I` / `L M S K` | Commune / Rare / Épique / Légendaire |
 | Type `feu` / `eau` / `foudre` / `nature` / `psy` / `ombre` | +Mult / +Chips / ×Mult / grows / replays / Soles |
 
-There are 146 different effects (Mult, Jetons, ×Mult, growing effects, replays, passive bonuses, money). Every card gets its own effect, never shared with another card, preferably from the family of its TCG type. See `js/supers.js`.
+There are 162 different effects (Mult, Jetons, ×Mult, growing effects, replays, passive bonuses, money). Every card gets its own effect, never shared with another card, preferably from the family of its TCG type. See `js/supers.js`.
 
 ## Card data (Supabase)
 

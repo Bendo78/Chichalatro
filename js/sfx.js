@@ -161,35 +161,62 @@
       }
     }
 
-    // Your own files: music/menu.mp3 or music/game.mp3 (checked once each).
-    async function hasFile(name) {
-      if (name in fileFor) return fileFor[name];
-      fileFor[name] = null;
-      for (const ext of ['mp3', 'ogg', 'm4a']) {
-        try {
-          const r = await fetch(`music/${name}.${ext}`, { method: 'HEAD', cache: 'no-store' });
-          if (r.ok && !(r.headers.get('content-type') || '').includes('text/html')) { fileFor[name] = `music/${name}.${ext}`; break; }
-        } catch (e) { }
+    // Your own files. music/playlist.json lists them: { "menu": [...], "game": [...] }.
+    // Without a playlist, music/menu.mp3 and music/game.mp3 are tried. Without files, the synth plays.
+    let playlist = null, queue = { menu: [], game: [] }, lastPlayed = { menu: null, game: null };
+    async function loadPlaylist() {
+      if (playlist) return playlist;
+      playlist = { menu: [], game: [] };
+      try {
+        const r = await fetch('music/playlist.json', { cache: 'no-store' });
+        if (r.ok) { const j = await r.json(); ['menu', 'game'].forEach(k => { if (Array.isArray(j[k])) playlist[k] = j[k].map(f => 'music/' + f); }); }
+      } catch (e) { }
+      for (const name of ['menu', 'game']) {
+        if (playlist[name].length) continue;
+        for (const ext of ['mp3', 'ogg', 'm4a']) {
+          try {
+            const r = await fetch(`music/${name}.${ext}`, { method: 'HEAD', cache: 'no-store' });
+            if (r.ok && !(r.headers.get('content-type') || '').includes('text/html')) { playlist[name] = [`music/${name}.${ext}`]; break; }
+          } catch (e) { }
+        }
       }
-      return fileFor[name];
+      return playlist;
+    }
+    // Menu: plays its songs in order. Game: shuffled, never the same song twice in a row.
+    function nextSong(name) {
+      const list = playlist[name];
+      if (!list.length) return null;
+      if (!queue[name].length) {
+        queue[name] = name === 'menu' ? list.slice() : list.slice().sort(() => Math.random() - .5);
+        if (queue[name].length > 1 && queue[name][0] === lastPlayed[name]) queue[name].push(queue[name].shift());
+      }
+      lastPlayed[name] = queue[name].shift();
+      return lastPlayed[name];
     }
     function stopSynth() { clearInterval(timer); timer = null; }
-    function stopFile() { if (audioEl) { audioEl.pause(); audioEl = null; } }
+    function stopFile() { if (audioEl) { audioEl.onended = null; audioEl.pause(); audioEl = null; } }
     function fileVolume() { return prefs.music ? Math.min(1, prefs.vol * .7) : 0; }
+    function playFile(name) {
+      const file = nextSong(name);
+      if (!file) return false;
+      stopFile();
+      audioEl = new Audio(file);
+      audioEl.dataset.track = name;
+      audioEl.volume = fileVolume();
+      audioEl.onended = () => { if (cur === name && prefs.music) playFile(name); };
+      audioEl.play().catch(() => { });
+      return true;
+    }
 
     async function start() {
       if (!ctx || !prefs.music) return;
-      const want = cur, file = await hasFile(want);
+      const want = cur;
+      await loadPlaylist();
       if (want !== cur || !prefs.music) return;
-      if (file) {
+      if (playlist[want].length) {
         stopSynth();
-        if (audioEl && audioEl.dataset.src === file) return;
-        stopFile();
-        audioEl = new Audio(file);
-        audioEl.dataset.src = file;
-        audioEl.loop = true;
-        audioEl.volume = fileVolume();
-        audioEl.play().catch(() => { });
+        if (audioEl && audioEl.dataset.track === want && !audioEl.paused) return;
+        playFile(want);
       } else {
         stopFile();
         if (timer) return;

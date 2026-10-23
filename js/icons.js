@@ -44,6 +44,9 @@
     disque: `<circle cx="12" cy="12" r="10" fill="#1a0f22" ${S}/><circle cx="12" cy="12" r="7.4" fill="none" stroke="#3a2a4a" stroke-width=".8"/><circle cx="12" cy="12" r="5.4" fill="none" stroke="#3a2a4a" stroke-width=".8"/><circle cx="12" cy="12" r="3.4" fill="#2bff6e" ${S}/><circle cx="12" cy="12" r=".9" fill="${K}"/><path d="M6 5.4a9 9 0 0 1 4.4-2" fill="none" stroke="#fff" stroke-width="1" opacity=".5" stroke-linecap="round"/>`,
     paillettes: `${star4(9, 10, 6.4, '#ffe600')}${star4(17.4, 5.4, 3.2, '#ff86de')}${star4(17, 17, 3.6, '#18d6ff')}`,
     chariot: `<path d="M2 4h3l2.6 11h10.8L21 7.4H6.4" fill="none" stroke="${K}" stroke-width="2.4" stroke-linejoin="round"/><path d="M2 4h3l2.6 11h10.8L21 7.4H6.4" fill="none" stroke="#ff7a00" stroke-width="1.2" stroke-linejoin="round"/><path d="M7 8.6h12.6l-1.6 4.8H8.2z" fill="#ffe600" ${S}/><circle cx="9" cy="19" r="1.8" fill="#fff6e6" ${S}/><circle cx="17" cy="19" r="1.8" fill="#fff6e6" ${S}/>`
+,
+    fantome: `<path d="M5 21V11a7 7 0 0 1 14 0v10l-2.4-2-2.3 2-2.3-2-2.3 2-2.3-2z" fill="#e8f4ff" ${S}/><ellipse cx="9.6" cy="11" rx="1.5" ry="2.1" fill="${K}"/><ellipse cx="14.4" cy="11" rx="1.5" ry="2.1" fill="${K}"/><path d="M10.4 15.2q1.6 1.2 3.2 0" fill="none" stroke="${K}" stroke-width="1.1" stroke-linecap="round"/>`,
+    sceau: `<path d="M12 2.4c1.4 0 1.8 1.4 3 1.8s2.6-.4 3.4.8-.2 2.4.2 3.6 1.8 1.8 1.4 3.2-1.8 1.6-2.2 2.8.2 2.6-1 3.4-2.4-.2-3.6.4-1.8 1.8-3.2 1.6-1.6-1.6-2.8-2-2.6.4-3.4-.8.2-2.4-.2-3.6-1.8-1.8-1.4-3.2 1.8-1.6 2.2-2.8-.2-2.6 1-3.4 2.4.2 3.6-.4 1.6-1.8 3-1.8z" fill="#ff3355" ${S}/><circle cx="12" cy="12" r="4.6" fill="none" stroke="#ffb3c0" stroke-width="1.2"/><path d="M10 12.4l1.4 1.4 2.8-3" fill="none" stroke="#fff6e6" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`
   };
 
   function svg(name, cls) {

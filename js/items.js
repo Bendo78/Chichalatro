@@ -139,8 +139,8 @@
     </svg><span class="ico tkt-ico">${Icons.svg(v.ico)}</span><span class="nm tkt-nm">${v.n}</span><i class="shine"></i></div>`;
   }
   function packArt(p) {
-    const label = { super: 'BANDE', voyance: 'VOYANCE', vinyl: 'VINYLES', cards: 'CARTES' }[p.kind];
-    const art = p.kind === 'super' ? Icons.svg('eventail') : p.kind === 'voyance' ? Icons.svg('boule') : p.kind === 'vinyl' ? Icons.svg('disque')
+    const label = { super: 'BANDE', voyance: 'VOYANCE', vinyl: 'VINYLES', cards: 'CARTES', fantome: 'FANTÔME' }[p.kind];
+    const art = p.kind === 'fantome' ? Icons.svg('fantome') : p.kind === 'super' ? Icons.svg('eventail') : p.kind === 'voyance' ? Icons.svg('boule') : p.kind === 'vinyl' ? Icons.svg('disque')
       : `<span class="suits"><b style="color:#e5126a">♥</b><b style="color:#f26100">♦</b><b style="color:#0c9a4a">♣</b><b style="color:#3a2fd1">♠</b></span>`;
     const zig = (y, up) => Array.from({ length: 15 }, (_, i) => `${i ? 'L' : 'M'}${4 + i * 4} ${up ? (i % 2 ? y - 3.4 : y) : (i % 2 ? y + 3.4 : y)}`).join(' ');
     return `<div class="item pck${p.pick > 1 ? ' xl' : ''}" style="--pc:${p.col}"><svg class="bgsvg" viewBox="0 0 66 92" aria-hidden="true">
@@ -154,5 +154,103 @@
     </svg><span class="ico pck-ico">${art}</span>${p.pick > 1 ? '<span class="mega">MÉGA</span>' : ''}<span class="pck-sub">${p.pick} parmi ${p.size}</span><i class="shine"></i></div>`;
   }
 
-  window.Items = { ENH, ENH_IDS, EDITIONS, rollEdition, VOYANCE, VOY, VOUCHERS, VCH, PACKS, rollPack, voyanceArt, vinylArt, ticketArt, packArt };
+  // ---------- seals on playing cards ----------
+  const SEALS = {
+    or: { n: 'Sceau doré', d: '+3 € quand la carte compte', col: '#ffc93c' },
+    rouge: { n: 'Sceau rouge', d: 'La carte est rejouée une fois', col: '#ff3355' },
+    bleu: { n: 'Sceau bleu', d: 'Gardée en main en fin de manche : crée le Vinyle de ta dernière main', col: '#18d6ff' },
+    violet: { n: 'Sceau violet', d: 'Quand tu la défausses : crée une carte Voyance', col: '#a43bff' }
+  };
+  // editions on playing cards (same names as super card editions)
+  const CARD_EDS = {
+    neon: { n: 'Néon', d: '+50 Jetons quand elle compte' },
+    holo: { n: 'Holo', d: '+10 Mult quand elle compte' },
+    arc: { n: 'Arc-en-ciel', d: '×1,5 Mult quand elle compte' }
+  };
+
+  // ---------- cartes Fantôme: strong effects with a price to pay ----------
+  const FANTOMES = [
+    { id: 'spectre', n: 'Le Spectre', d: 'Crée une super carte Légendaire. Ton argent tombe à 0 €', ico: 'fantome', max: 0, apply: ctx => { ctx.newSuper(4); ctx.money(-ctx.st.soles); }, can: ctx => ctx.room() },
+    { id: 'hantise', n: 'La Hantise', d: 'Une super carte au hasard devient Arc-en-ciel, toutes les autres sont détruites', ico: 'fantome', max: 0, apply: ctx => ctx.haunt(), can: ctx => ctx.st.supers.length > 0 },
+    { id: 'ectoplasme', n: 'L\'Ectoplasme', d: 'Une super carte au hasard devient Négative. −1 carte en main pour la partie', ico: 'fantome', max: 0, apply: ctx => ctx.ecto(), can: ctx => ctx.st.supers.some(s => !s.ed) },
+    { id: 'poltergeist', n: 'Le Poltergeist', d: 'Toutes tes mains de poker montent d\'un niveau', ico: 'fantome', max: 0, apply: ctx => ctx.allLevels() },
+    { id: 'possede', n: 'Le Possédé', d: 'Ajoute 2 copies de la carte sélectionnée à ton deck', ico: 'fantome', max: 1, apply: ctx => ctx.dupe(ctx.targets[0], 2) },
+    { id: 'exorciste', n: 'L\'Exorciste', d: 'Détruit 1 carte au hasard de ta main, ajoute 3 figures améliorées à ton deck', ico: 'fantome', max: 0, apply: ctx => ctx.exorcise() },
+    { id: 'medium', n: 'Le Médium', d: 'Ajoute un Sceau rouge à la carte sélectionnée', ico: 'sceau', max: 1, apply: ctx => ctx.setSeal(ctx.targets[0], 'rouge') },
+    { id: 'notaire', n: 'Le Notaire', d: 'Ajoute un Sceau doré à la carte sélectionnée', ico: 'sceau', max: 1, apply: ctx => ctx.setSeal(ctx.targets[0], 'or') },
+    { id: 'marin', n: 'Le Marin', d: 'Ajoute un Sceau bleu à la carte sélectionnée', ico: 'sceau', max: 1, apply: ctx => ctx.setSeal(ctx.targets[0], 'bleu') },
+    { id: 'sorciere', n: 'La Sorcière', d: 'Ajoute un Sceau violet à la carte sélectionnée', ico: 'sceau', max: 1, apply: ctx => ctx.setSeal(ctx.targets[0], 'violet') },
+    { id: 'aura', n: 'L\'Aura', d: 'Ajoute une édition (Néon, Holo ou Arc-en-ciel) à la carte sélectionnée', ico: 'paillettes', max: 1, apply: ctx => ctx.setCardEd(ctx.targets[0]) },
+    { id: 'transfuge', n: 'Le Transfuge', d: 'Toutes les cartes de ta main prennent la même couleur. −1 carte en main', ico: 'pinceau', max: 0, apply: ctx => ctx.oneSuit() },
+    { id: 'sosie', n: 'Le Sosie', d: 'Copie une super carte au hasard, détruit toutes les autres', ico: 'copie', max: 0, apply: ctx => ctx.cloneOne(), can: ctx => ctx.st.supers.length > 0 },
+    { id: 'immolation', n: 'L\'Immolation', d: 'Détruit 5 cartes au hasard de ta main, gagne 20 €', ico: 'broyeuse', max: 0, apply: ctx => ctx.immolate() }
+  ];
+  const FAN = Object.fromEntries(FANTOMES.map(v => [v.id, v]));
+
+  // ---------- Tickets VIP level 2 (offered once the level 1 is owned) ----------
+  const VOUCHERS2 = [
+    { id: 'bras2', req: 'bras', n: 'Bras très long', d: '+1 main de plus à chaque manche', ico: 'main', col: '#0f9be8' },
+    { id: 'poubelle2', req: 'poubelle', n: 'Benne à ordures', d: '+1 défausse de plus à chaque manche', ico: 'poubelle', col: '#c4122f' },
+    { id: 'grandemain2', req: 'grandemain', n: 'Main de géant', d: '+1 carte de plus en main', ico: 'eventail', col: '#e05a00' },
+    { id: 'vip2', req: 'vip', n: 'Carte Platine', d: '+1 emplacement de super carte de plus', ico: 'etoile', col: '#e0b22c', price: 14 },
+    { id: 'codepromo2', req: 'codepromo', n: 'Black Friday', d: 'Tout coûte 50 % moins cher (au lieu de 25 %)', ico: 'etiquette', col: '#13b86b' },
+    { id: 'relance2', req: 'relance', n: 'Relance express', d: 'Les relances coûtent encore 2 € de moins', ico: 'relance', col: '#7a22d4' },
+    { id: 'sac2', req: 'sac', n: 'Valise', d: '+1 emplacement de consommable de plus', ico: 'banane', col: '#d4146e' },
+    { id: 'cochon2', req: 'cochon', n: 'Coffre-fort', d: 'Intérêts plafonnés encore 5 € plus haut', ico: 'cochon', col: '#d65fb6' },
+    { id: 'disquaire2', req: 'disquaire', n: 'Collectionneur', d: 'Les Vinyles sortent 4× plus souvent', ico: 'disque', col: '#0c9a4a' },
+    { id: 'cristal2', req: 'cristal', n: 'Troisième œil', d: 'Les Voyance sortent 4× plus souvent, les Fantôme peuvent sortir', ico: 'boule', col: '#7a22d4' },
+    { id: 'paillettes2', req: 'paillettes', n: 'Strass', d: 'Les éditions sont 4× plus fréquentes', ico: 'paillettes', col: '#e0c800' },
+    { id: 'etal2', req: 'etal', n: 'Grand marché', d: '+1 article de plus en vente', ico: 'chariot', col: '#e05a00' }
+  ];
+  VOUCHERS2.forEach(v => { v.lvl = 2; VCH[v.id] = v; });
+
+  // ---------- Tags: rewards for skipping a round ----------
+  const TAGS = [
+    { id: 'pochette', n: 'Tag Pochette', d: 'Une Méga Pochette Bande gratuite dans la prochaine ChichaClub', ico: 'eventail', col: '#ff2e88' },
+    { id: 'voyance', n: 'Tag Voyance', d: 'Une Méga Pochette Voyance gratuite dans la prochaine ChichaClub', ico: 'boule', col: '#a43bff' },
+    { id: 'vinyle', n: 'Tag Platine', d: 'Une Méga Pochette Vinyles gratuite dans la prochaine ChichaClub', ico: 'disque', col: '#13b86b' },
+    { id: 'cartes', n: 'Tag Cartes', d: 'Une Méga Pochette Cartes gratuite dans la prochaine ChichaClub', ico: 'eventail', col: '#ff7a00' },
+    { id: 'fantome', n: 'Tag Fantôme', d: 'Une Pochette Fantôme gratuite dans la prochaine ChichaClub', ico: 'fantome', col: '#5a6b8c' },
+    { id: 'tirelire', n: 'Tag Tirelire', d: 'Double ton argent tout de suite (40 € max)', ico: 'cochon', col: '#ff86de' },
+    { id: 'invest', n: 'Tag Investissement', d: '+25 € après le prochain boss battu', ico: 'or', col: '#ffc93c' },
+    { id: 'rare', n: 'Tag Tête d\'affiche', d: 'Une super carte Rare ou mieux, gratuite, dans la prochaine ChichaClub', ico: 'etoile', col: '#18d6ff' },
+    { id: 'holo', n: 'Tag Holo', d: 'La prochaine super carte de la ChichaClub sera Holo et gratuite', ico: 'paillettes', col: '#ff86de' },
+    { id: 'arc', n: 'Tag Arc-en-ciel', d: 'La prochaine super carte de la ChichaClub sera Arc-en-ciel et gratuite', ico: 'paillettes', col: '#ffe600' },
+    { id: 'negatif', n: 'Tag Négatif', d: 'La prochaine super carte de la ChichaClub sera Négative et gratuite', ico: 'paillettes', col: '#1d1022' },
+    { id: 'relances', n: 'Tag Relances', d: 'Les 2 premières relances de la prochaine ChichaClub sont gratuites', ico: 'relance', col: '#a43bff' },
+    { id: 'ticket', n: 'Tag Ticket', d: 'Le Ticket VIP de la prochaine ChichaClub est gratuit', ico: 'etoile', col: '#ffc93c' },
+    { id: 'main', n: 'Tag Main bonus', d: '+1 main pendant la prochaine manche', ico: 'main', col: '#0f9be8' },
+    { id: 'boss', n: 'Tag Changement de boss', d: 'Change le boss de la nuit', ico: 'roue', col: '#ff3355' },
+    { id: 'niveau', n: 'Tag Niveau', d: 'Ta main la plus jouée monte de 2 niveaux', ico: 'fleche', col: '#2bff6e' }
+  ];
+  const TAG = Object.fromEntries(TAGS.map(t => [t.id, t]));
+
+  // ---------- extra packs ----------
+  PACKS.push(
+    { id: 'fantome', n: 'Pochette Fantôme', kind: 'fantome', size: 2, pick: 1, price: 5, col: '#5a6b8c', w: .8 },
+    { id: 'fantomexl', n: 'Méga Pochette Fantôme', kind: 'fantome', size: 4, pick: 1, price: 8, col: '#5a6b8c', w: .3 }
+  );
+
+  function fantomeArt(v) {
+    return `<div class="item fan"><svg class="bgsvg" viewBox="0 0 63 88" aria-hidden="true">
+      <defs><radialGradient id="fg" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#4c5f86"/><stop offset="1" stop-color="#141a2e"/></radialGradient></defs>
+      <rect x="1" y="1" width="61" height="86" rx="6" fill="url(#fg)" stroke="${INK}" stroke-width="2"/>
+      <rect x="4.5" y="4.5" width="54" height="79" rx="4" fill="none" stroke="#bfe6ff" stroke-width="1" stroke-dasharray="1 2.4"/>
+      <path d="M14 58 C14 30 22 16 31.5 16 C41 16 49 30 49 58 L45 54 L41 58 L37 54 L31.5 58 L26 54 L22 58 L18 54 Z" fill="#e8f4ff" opacity=".18"/>
+      <circle cx="31.5" cy="36" r="15" fill="#0c1020" stroke="#bfe6ff" stroke-width="1.2"/>
+      <path d="M5 66 h53 v12 h-53 z" fill="#bfe6ff" stroke="${INK}" stroke-width="1"/>
+    </svg><span class="ico fan-ico">${Icons.svg(v.ico)}</span><span class="nm fan-nm">${v.n}</span></div>`;
+  }
+  function tagArt(t) {
+    return `<span class="tag-ico" style="--tg:${t.col}" title="${t.n} : ${t.d}">${Icons.svg(t.ico)}</span>`;
+  }
+
+  // level-2 tickets get a "II" badge on top of the normal ticket artwork
+  const ticketArtBase = ticketArt;
+  function ticketArt2(v) {
+    return ticketArtBase(v).replace('<i class="shine"></i>', `${v.lvl === 2 ? '<span class="tkt-lvl">II</span>' : ''}<i class="shine"></i>`);
+  }
+
+  window.Items = { ENH, ENH_IDS, EDITIONS, rollEdition, VOYANCE, VOY, VOUCHERS, VOUCHERS2, VCH, PACKS, rollPack, voyanceArt, vinylArt, ticketArt: ticketArt2, packArt,
+    SEALS, CARD_EDS, FANTOMES, FAN, fantomeArt, TAGS, TAG, tagArt };
 })();
