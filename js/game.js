@@ -40,6 +40,12 @@
     return `<div class="noart" style="--h:${HUES[c.t] || 330}"><span>${esc(ini)}</span></div>`;
   }
 
+  // Photo framing saved by the TCG editor: fx/fy = focus point in %, fz = zoom.
+  function frame(c) {
+    const x = isFinite(+c.fx) ? +c.fx : 50, y = isFinite(+c.fy) ? +c.fy : 50, z = +c.fz > 0 ? +c.fz : 1;
+    return `object-position:${x}% ${y}%;transform-origin:${x}% ${y}%${z !== 1 ? `;transform:scale(${z})` : ''}`;
+  }
+
   // ---------- rendering pieces ----------
   function playingCardHTML(c, extra) {
     const s = Poker.suitOf(c.suit), lb = Poker.label(c);
@@ -55,12 +61,13 @@
     return `<div class="sc ${tier.cls} fam-${sc.fam}${o.flip ? ' flip' : ''}" data-uid="${sc.uid}" tabindex="0" role="button" aria-label="${esc(c.n)} — ${esc(Supers.liveText(sc))}">
       <div class="sc-in">
         <div class="sc-f">
-          ${ph ? `<img src="${esc(ph)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'noart',innerHTML:'<span>?</span>'}))">` : noArt(c)}
+          ${ph && /^data:video|\.(mp4|webm|mov)(\?|$)/i.test(ph) ? `<video src="${esc(ph)}" autoplay muted loop playsinline preload="metadata" style="${frame(c)}"></video>` : ph ? `<img src="${esc(ph)}" alt="" loading="lazy" style="${frame(c)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'noart',innerHTML:'<span>?</span>'}))">` : noArt(c)}
           <div class="sc-tier">${tier.n}</div>
           <div class="sc-name">${esc(c.n)}</div>
         </div>
         <div class="sc-b"${back ? ` style="--back:url('${esc(back)}')"` : ''}>
           <div class="sc-bn">${esc(c.n)}</div>
+          ${c.an ? `<p class="sc-atk">${esc(c.an)}</p>` : ''}
           ${c.f ? `<p class="sc-desc">« ${esc(c.f)} »</p>` : ''}
           <div class="sc-eff">${esc(Supers.liveText(sc))}</div>
           <div class="sc-meta">${esc(sc.famName)} · ${tier.n}${ser ? ' · ' + esc(ser.code || ser.n) : ''}</div>
