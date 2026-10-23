@@ -832,3 +832,16 @@ body.reduced .calc.inferno { animation: none; }
 .pdot.saving { background: var(--amarillo); animation: twk .6s infinite alternate; }
 .pdot.error { background: var(--c-red); }
 @keyframes twk { from { opacity: .4; } }
+
+/* item names: sized to the card and centred inside their banner, never cut */
+.item { container-type: inline-size; }
+.item .voy-nm, .item .fan-nm, .item .tkt-nm, .item .vin-nm {
+  left: 8% !important; right: 8% !important; bottom: auto !important;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 8.6cqw !important; line-height: 1.02 !important; letter-spacing: 0 !important;
+  overflow: hidden; word-break: break-word;
+}
+.item .voy-nm, .item .fan-nm { top: 75.2%; height: 13.4%; }
+.item .tkt-nm { top: 80.6%; height: 11.6%; font-size: 7.6cqw !important; }
+.item .vin-nm { top: 79.5%; height: 12.5%; }
+.item .nm:not(.voy-nm):not(.fan-nm):not(.tkt-nm):not(.vin-nm) { font-size: 8.6cqw; }
