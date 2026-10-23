@@ -48,7 +48,8 @@
   function handValue(h) { const L = levelOf(h.id); return { chips: h.c + (L - 1) * h.lc, mult: h.m + (L - 1) * h.lm }; }
   function targetFor(noche, t) {
     const mul = t === 2 && st.stake >= 5 ? 2.5 : TANDAS[t].mul;
-    const v = BASE_TARGET[Math.min(noche, NOCHES) - 1] * mul * (st.stake >= 2 ? 1.25 : 1);
+    const base = noche <= NOCHES ? BASE_TARGET[noche - 1] : BASE_TARGET[NOCHES - 1] * Math.pow(1.7, noche - NOCHES);
+    const v = base * mul * (st.stake >= 2 ? 1.25 : 1);
     return Math.round(v / 50) * 50;
   }
   const rewardFor = t => (t === 0 && st.stake >= 1 ? 0 : TANDAS[t].reward);
@@ -62,6 +63,7 @@
 
   // ---------- shop items: helpers ----------
   const usedSlots = () => st.supers.filter(s => s.ed !== 'negatif').length;
+  const modSum = k => st.supers.reduce((n, sc) => n + ((sc.mods && sc.mods[k]) || 0), 0);
   const roomForSuper = sc => (sc && sc.ed === 'negatif') || usedSlots() < st.maxSupers;
   const priceOf = base => Math.max(1, Math.round(base * (st.vouchers.has('codepromo') ? .75 : 1)) + (st.stake >= 4 ? 1 : 0));
   function makeSuper(c, ed) {
@@ -88,7 +90,8 @@
     if (id === 'disquaire') st.vinMul = 2;
     if (id === 'cristal') st.voyMul = 2;
     if (id === 'paillettes') st.edMul *= 2;
-    if (id === 'etal') st.shopSlots++;
+    if (id === 'etal') { st.shopSlots++; if (st.phase === 'shop' && st.offers) st.offers.push(rollOffers(1)[0]); }
+    if (id === 'relance' && st.phase === 'shop') st.rerollCost = Math.max(1, st.rerollCost - 2);
   }
 
   // ---------- small UI helpers ----------
@@ -226,6 +229,7 @@
         <button class="btn xl orange" id="b-opt">Options</button>
         <button class="btn xl rosa" id="b-col">Collection</button>
         <button class="btn xl green" id="b-ach">Succès</button>
+        <button class="btn xl purple" id="b-stats">Stats</button>
       </div>
       <p class="src">${DB.source === 'supabase' ? `<b class="ok">●</b> ${n} super cartes CHICHA TCG chargées` : `<b class="warn">●</b> ${n} super cartes (set de base)`}
         · <button class="link" id="b-login">${DB.user ? 'Déconnexion' : 'Connexion TCG'}</button></p>
@@ -234,6 +238,7 @@
     $('#b-opt').onclick = () => { Sfx.play('click'); optionsModal(); };
     $('#b-col').onclick = () => { Sfx.play('click'); collection(); };
     $('#b-ach').onclick = () => { Sfx.play('click'); achievementsModal(); };
+    $('#b-stats').onclick = () => { Sfx.play('click'); statsModal(); };
     $('#b-login').onclick = DB.user ? async () => { await ChichaData.signOut(); boot(); } : loginForm;
   }
 
@@ -293,6 +298,69 @@
       newRun(d.id, stake);
     };
     draw();
+  }
+
+  // ---------- hover info bubbles (fixed, so nothing can cut them) ----------
+  const RANK_NAME = { J: 'Valet', Q: 'Dame', K: 'Roi', A: 'As' };
+  const SUIT_NAME = { C: 'Cœur', K: 'Carreau', T: 'Trèfle', P: 'Pique' };
+  function cardTipHTML(c) {
+    const E = c.enh && Items.ENH[c.enh];
+    const name = Poker.isStone(c) ? 'Carte Pierre' : `${RANK_NAME[c.rank] || c.rank} de ${SUIT_NAME[c.suit]}`;
+    const chips = Poker.isStone(c) ? 50 : Poker.chipsOf(c);
+    return `<b>${name}</b>${E ? `<span class="eff"><i style="--ec:${E.col}">${E.n}</i> ${esc(E.d)}</span>` : ''}<small>+${chips} Jetons quand elle compte</small>`;
+  }
+  let tipTimer = null, tipEl = null;
+  function hideHtip() { clearTimeout(tipTimer); tipEl = null; const t = document.getElementById('htip'); if (t) t.remove(); }
+  function showHtip(el, html) {
+    hideHtip();
+    tipEl = el;
+    const t = document.createElement('div');
+    t.id = 'htip'; t.className = 'htip'; t.innerHTML = html;
+    document.body.appendChild(t);
+    const r = el.getBoundingClientRect(), tr = t.getBoundingClientRect();
+    let y = r.top - tr.height - 12;
+    if (y < 8) y = r.bottom + 12;
+    t.style.left = Math.max(8, Math.min(innerWidth - tr.width - 8, r.left + r.width / 2 - tr.width / 2)) + 'px';
+    t.style.top = y + 'px';
+  }
+  document.addEventListener('pointerover', e => {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
+    const itw = e.target.closest('.itw'), card = e.target.closest('.pc, .mpc');
+    const el = itw || card;
+    if (!el || el === tipEl) return;
+    let html = null, delay = 450;
+    if (itw) { const d = itw.querySelector('.itd'); html = d && d.innerHTML; delay = 150; }
+    else if (card.dataset.tip) html = card.dataset.tip;
+    else if (st && card.classList.contains('pc')) { const c = st.cards.concat(st.hand).find(x => x.uid === +card.dataset.uid); if (c) html = cardTipHTML(c); }
+    if (!html) return;
+    clearTimeout(tipTimer);
+    tipEl = el;
+    tipTimer = setTimeout(() => { if (tipEl === el && el.matches(':hover')) showHtip(el, html); }, delay);
+  });
+  document.addEventListener('pointerout', e => { if (tipEl && !tipEl.contains(e.relatedTarget)) hideHtip(); });
+  document.addEventListener('pointerdown', hideHtip, true);
+
+  // ---------- stats ----------
+  function statsModal() {
+    const S = Meta.data.stats, M = Meta.data;
+    const most = Object.entries(S.hands || {}).sort((a, b) => b[1] - a[1])[0];
+    const totalHands = Object.values(S.hands || {}).reduce((a, b) => a + b, 0);
+    const rows = [
+      ['Parties jouées', S.runs], ['Parties gagnées', S.wins], ['Manches gagnées', S.rounds], ['Boss battus', S.bosses],
+      ['Mains jouées', totalHands], ['Main préférée', most ? Poker.HAND_BY_ID[most[0]].n + ' (' + most[1] + ')' : '—'],
+      ['Cartes défaussées', S.discards], ['Super cartes recrutées', S.recruited], ['Cartes Voyance utilisées', S.voyUsed || 0],
+      ['Vinyles utilisés', S.cumbias || 0], ['Pochettes ouvertes', S.packs || 0], ['Tickets VIP achetés', S.vouchers || 0],
+      ['Argent max en même temps', (S.maxSoles || 0) + ' €'], ['Super cartes débloquées', Unlocks.open().length + ' / ' + DB.cards.length],
+      ['Succès', Object.keys(M.ach).length + ' / ' + Meta.ACHIEVEMENTS.length]
+    ];
+    const ov = modal(`<h2>Statistiques</h2>
+      <div class="best"><div><small>Meilleure main</small><b>${fmt(S.bestHand)}</b></div><div><small>Meilleure partie</small><b>${fmt(S.bestRun || 0)}</b></div><div><small>Nuit record</small><b>${S.best || 0}</b></div></div>
+      <div class="srows">${rows.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
+      <h3>Decks gagnés</h3>
+      <div class="dwon">${Meta.DECKS.map(d => { const w = M.deckWins[d.id]; return `<span class="${w != null ? 'ok' : ''}" style="--c:${d.color}"><i>${d.n.replace('Deck ', '')}</i>${w != null ? `<em style="--s:${Meta.STAKES[w].c}">${Meta.STAKES[w].n}</em>` : '<em>—</em>'}</span>`; }).join('')}</div>
+      <p class="mute small">Une partie est gagnée quand tu bats le boss de la nuit ${NOCHES}. Ensuite tu peux continuer en mode infini pour monter ton record.</p>
+      <div class="acts"><button class="btn blue" id="st-x">Fermer</button></div>`, 'wide');
+    ov.querySelector('#st-x').onclick = ov.close;
   }
 
   function achievementsModal() {
@@ -531,11 +599,16 @@
     const targets = needsCards ? selected() : [];
     const err = itemBlocked(it, targets);
     if (err) { toast(err); Sfx.play('deselect'); return; }
+    fxUse(document.querySelector(`#cons .ci[data-uid="${it.uid}"]`), it.kind === 'vinyl' ? '#2bff6e' : '#c46bff');
     st.consumables = st.consumables.filter(x => x !== it);
     if (it.kind === 'vinyl') levelUp(it.id);
     else {
       v.apply(voyCtx(targets, (c, gone) => {
-        if (gone) { flyAway(gone); st.sel.clear(); layoutHand(); updateDeckCount(); return; }
+        if (gone) {
+          gone.forEach(g => { const e = cardEls.get(g.uid); if (e) { e.classList.add('fx-shred'); burst(e, '#ff3355'); } });
+          setTimeout(() => { flyAway(gone); st.sel.clear(); layoutHand(); updateDeckCount(); }, 380 / OPTS.speed);
+          return;
+        }
         refreshCard(c);
       }));
       Meta.add('voyUsed');
@@ -554,7 +627,36 @@
     el.className = el.className.replace(/\s?enh-\w+/g, '') + (c.enh ? ' enh-' + c.enh : '');
     el.classList.remove('s-C', 's-K', 's-T', 's-P'); el.classList.add('s-' + c.suit);
     el.querySelector('.face').innerHTML = Art.cardFace(c);
-    bump(el);
+    fxPaint(el, c.enh ? Items.ENH[c.enh].col : '#ffe600');
+  }
+  // Paint sweep + sparkles over an element (power applied)
+  function fxPaint(el, col) {
+    if (!el) return;
+    el.style.setProperty('--fxc', col);
+    el.classList.remove('fx-paint'); void el.offsetWidth; el.classList.add('fx-paint');
+    setTimeout(() => el.classList.remove('fx-paint'), 900);
+    burst(el, col);
+    Sfx.play('flip');
+  }
+  function burst(el, col, n) {
+    if (OPTS.reduced || !el) return;
+    const r = el.getBoundingClientRect(), box = document.createElement('div');
+    box.className = 'burst';
+    box.style.left = r.left + r.width / 2 + 'px'; box.style.top = r.top + r.height / 2 + 'px';
+    box.innerHTML = Array.from({ length: n || 14 }, (_, i) => { const a = i / (n || 14) * Math.PI * 2, d = 40 + Math.random() * 40; return `<i style="--dx:${(Math.cos(a) * d).toFixed(0)}px;--dy:${(Math.sin(a) * d).toFixed(0)}px;background:${i % 3 ? col : '#fff6e6'}"></i>`; }).join('');
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 800);
+  }
+  // A consumable flies to the middle of the table and bursts
+  function fxUse(srcEl, col) {
+    if (OPTS.reduced || !srcEl) return;
+    const r = srcEl.getBoundingClientRect(), g = srcEl.cloneNode(true);
+    g.className = 'fly-ghost'; g.style.left = r.left + 'px'; g.style.top = r.top + 'px'; g.style.width = r.width + 'px'; g.style.height = r.height + 'px';
+    document.body.appendChild(g);
+    const st2 = $('#stage').getBoundingClientRect();
+    requestAnimationFrame(() => { g.style.transform = `translate(${st2.left + st2.width / 2 - r.left - r.width / 2}px, ${st2.top + st2.height * .45 - r.top - r.height / 2}px) scale(1.4) rotate(8deg)`; g.style.opacity = '0'; });
+    setTimeout(() => { g.remove(); }, 650);
+    setTimeout(() => { const t = document.createElement('div'); t.style.cssText = `position:fixed;left:${st2.left + st2.width / 2}px;top:${st2.top + st2.height * .45}px;width:1px;height:1px`; document.body.appendChild(t); burst(t, col, 20); setTimeout(() => t.remove(), 900); }, 450);
   }
 
   function sizeStage() {
@@ -696,9 +798,10 @@
     st.round++;
     st.target = targetFor(st.noche, st.tanda);
     st.score = 0;
-    st.hands = st.handsBase - (b === 'hands' ? 1 : 0);
-    st.discards = b === 'nodisc' ? 0 : st.discardsBase;
-    st.handSize = st.handSizeBase - (b === 'size' ? 1 : 0);
+    st.hands = st.handsBase - (b === 'hands' ? 1 : 0) + modSum('hands');
+    st.discards = b === 'nodisc' ? 0 : st.discardsBase + modSum('discards');
+    st.handSize = st.handSizeBase - (b === 'size' ? 1 : 0) + modSum('handSize');
+    st.handsPlayedRound = 0; st.discUsedRound = 0;
     st.draw = Poker.shuffle(st.cards.slice());
     st.draw.forEach(c => c.where = 'deck');
     st.hand = []; st.sel = new Set(); st.busy = false;
@@ -850,7 +953,12 @@
     await wait(520);
 
     if (isBoss() && st.boss.id === 'pricey') { setSoles(Math.max(0, st.soles - 1)); pop($('#s-soles'), '-1 €', 'off'); }
-    const ctx = { hand: ev.hand, played: sel, scoring: ev.scoring, discardsLeft: st.discards, handsLeft: st.hands, isLastHand: st.hands === 0 };
+    const ctx = {
+      hand: ev.hand, played: sel, scoring: ev.scoring, discardsLeft: st.discards, handsLeft: st.hands, isLastHand: st.hands === 0,
+      held: st.hand.slice(), soles: st.soles, nSupers: st.supers.length, deckLeft: st.draw.length, level: levelOf(ev.hand.id),
+      firstHand: !st.handsPlayedRound, discUsed: st.discUsedRound || 0
+    };
+    st.handsPlayedRound = (st.handsPlayedRound || 0) + 1;
     st.supers.forEach(sc => sc.onPlayed && sc.onPlayed(ctx, sc));
 
     let nc = 0, nm = 0;
@@ -911,6 +1019,8 @@
     await wait(600);
     const from = st.score;
     st.score += total;
+    st.runScore = (st.runScore || 0) + total;
+    Meta.max('bestRun', st.runScore);
     await countTo($('#s-score'), from, st.score, 650);
     bump($('#s-score'));
     hn.innerHTML = '';
@@ -933,6 +1043,7 @@
     st.hand = st.hand.filter(c => !st.sel.has(c.uid));
     st.sel.clear();
     st.discards--;
+    st.discUsedRound = (st.discUsedRound || 0) + 1;
     setStat('s-disc', st.discards);
     Meta.add('discards', sel.length);
     st.supers.forEach(sc => sc.onDiscard && sc.onDiscard(sel.length, sc));
@@ -960,8 +1071,9 @@
     const lines = [];
     if (rewardFor(st.tanda)) lines.push([`${isBoss() ? st.boss.n : t.n} battu`, rewardFor(st.tanda), 'gold']);
     if (st.hands) lines.push([`${st.hands} main${st.hands > 1 ? 's' : ''} restante${st.hands > 1 ? 's' : ''} (1 € chacune)`, st.hands, 'blue']);
-    const interest = Math.min(st.interestMax, Math.floor(st.soles / 5));
-    if (interest) lines.push([`1 d'intérêt par tranche de 5 € (max ${st.interestMax} €)`, interest, 'gold']);
+    const iMax = st.interestMax + modSum('interest');
+    const interest = Math.min(iMax, Math.floor(st.soles / 5));
+    if (interest) lines.push([`1 d'intérêt par tranche de 5 € (max ${iMax} €)`, interest, 'gold']);
     st.supers.forEach(sc => { const m = sc.endRound && sc.endRound(st, sc); if (m) lines.push([sc.card.n, m, 'rosa']); });
     if (gold) lines.push([`Cartes en or gardées en main (${gold})`, gold * 3, 'gold']);
     const sum = lines.reduce((s, l) => s + l[1], 0);
@@ -984,7 +1096,7 @@
     b.onclick = () => {
       setSoles(st.soles + sum);
       Sfx.play('buy');
-      if (st.tanda === 2 && st.noche === NOCHES) return victory();
+      if (st.tanda === 2 && st.noche === NOCHES && !st.endless) return victory();
       shop();
     };
   }
@@ -1005,7 +1117,8 @@
   // ---------- shop (ChichaClub) ----------
   function shop() {
     st.phase = 'shop'; st.busy = false;
-    st.rerollCost = Math.max(1, 5 - (st.vouchers.has('relance') ? 2 : 0));
+    st.rerollCost = Math.max(1, 5 - (st.vouchers.has('relance') ? 2 : 0) - modSum('reroll'));
+    st.vinylShelf = Poker.shuffle(Poker.HANDS.slice()).slice(0, 2).map(h => newVinyl(h.id));
     st.offers = rollOffers();
     if (!st.voucherOffer) {
       const left = Items.VOUCHERS.filter(v => !st.vouchers.has(v.id));
@@ -1017,10 +1130,10 @@
     shopScreen(true);
   }
   // The card row mixes super cards, Voyance and Vinyles.
-  function rollOffers() {
+  function rollOffers(count) {
     const owned = new Set(st.supers.map(sc => sc.card.id)), out = [];
     const wS = 70, wV = 15 * st.voyMul, wN = 15 * st.vinMul;
-    for (let i = 0; i < st.shopSlots; i++) {
+    for (let i = 0; i < (count || st.shopSlots); i++) {
       const r = Math.random() * (wS + wV + wN);
       if (r < wS) {
         const pool = Unlocks.open();
@@ -1048,6 +1161,8 @@
       <div class="shop-low">
         <div class="vbox"><small>Ticket VIP de la nuit</small>${!vo ? '<p class="mute">Tu as tous les tickets !</p>' : vo.sold ? '<div class="offer sold"><span>Acheté</span></div>'
           : `<div class="offer tk"><span class="price">${vp} €</span>${itemBox(Items.ticketArt(vo.v), vo.v.n, vo.v.d)}<button class="btn sm blue" id="b-vch">Acheter</button></div>`}</div>
+        <div class="nbox"><small>Vinyles</small><div class="packs">${(st.vinylShelf || []).map((o, i) => !o ? '<div class="offer sold"><span>Vendu</span></div>'
+          : `<div class="offer itm"><span class="price">${priceOf(o.price)} €</span>${itemBox(itemArt(o), itemName(o), itemDesc(o))}<button class="btn sm blue" data-vin="${i}">Acheter</button></div>`).join('')}</div></div>
         <div class="pbox"><small>Pochettes</small><div class="packs">${st.packs.map((o, i) => o.sold ? '<div class="offer sold"><span>Ouverte</span></div>'
           : `<div class="offer pk"><span class="price">${priceOf(o.p.price)} €</span>${itemBox(Items.packArt(o.p), o.p.n, `Choisis ${o.p.pick} carte${o.p.pick > 1 ? 's' : ''} parmi ${o.p.size}`)}<button class="btn sm blue" data-pack="${i}">Ouvrir</button></div>`).join('')}</div></div>
       </div>
@@ -1091,6 +1206,12 @@
         shopScreen();
       };
     }
+    C.querySelectorAll('[data-vin]').forEach(b => {
+      const i = +b.dataset.vin, o = st.vinylShelf[i], price = priceOf(o.price), full = st.consumables.length >= st.maxCons;
+      b.disabled = st.soles < price || full;
+      if (full) b.textContent = 'Plus de place';
+      b.onclick = () => { setSoles(st.soles - price); st.vinylShelf[i] = null; st.consumables.push(o); Sfx.play('buy'); renderCons(o.uid); shopScreen(); };
+    });
     C.querySelectorAll('[data-pack]').forEach(b => {
       const o = st.packs[+b.dataset.pack], price = priceOf(o.p.price);
       b.disabled = st.soles < price;
@@ -1127,7 +1248,7 @@
     let temp = p.kind === 'voyance' ? Poker.shuffle(st.cards.slice()).slice(0, 8) : [];
     const sel = new Set();
 
-    const miniCard = (c, extra) => `<div class="mpc ${extra || ''}" data-c="${c.uid}"><div class="face s-${c.suit}">${Art.cardFace(c)}</div></div>`;
+    const miniCard = (c, extra) => `<div class="mpc ${extra || ''}${c.enh ? ' enh-' + c.enh : ''}" data-c="${c.uid}" data-tip="${esc(cardTipHTML(c))}"><div class="face s-${c.suit}">${Art.cardFace(c)}</div></div>`;
     const choiceHTML = (ch, i) => {
       if (!ch) return '<div class="offer sold"><span>Pris</span></div>';
       if (p.kind === 'super') return `<div class="offer">${superHTML(ch)}<button class="btn sm blue" data-pick="${i}" ${roomForSuper(ch) ? '' : 'disabled'}>${roomForSuper(ch) ? 'Prendre' : 'Plus de place'}</button></div>`;
@@ -1167,7 +1288,22 @@
           const targets = temp.filter(c => sel.has(c.uid));
           const err = itemBlocked(ch, targets);
           if (err) { toast(err.replace('dans ta main', 'au-dessus')); Sfx.play('deselect'); return; }
-          Items.VOY[ch.id].apply(voyCtx(targets, (c, gone) => { if (gone) temp = temp.filter(x => !gone.includes(x)); }));
+          Items.VOY[ch.id].apply(voyCtx(targets, (c, gone) => {
+            if (gone) {
+              gone.forEach(g => { const e = $(`.mini-hand .mpc[data-c="${g.uid}"]`); if (e) { e.classList.add('fx-shred'); burst(e, '#ff3355'); } });
+              temp = temp.filter(x => !gone.includes(x));
+              return;
+            }
+            const e = $(`.mini-hand .mpc[data-c="${c.uid}"]`);
+            if (e) {
+              e.className = 'mpc' + (c.enh ? ' enh-' + c.enh : '');
+              e.dataset.tip = cardTipHTML(c);
+              e.querySelector('.face').className = 'face s-' + c.suit;
+              e.querySelector('.face').innerHTML = Art.cardFace(c);
+              fxPaint(e, c.enh ? Items.ENH[c.enh].col : '#ffe600');
+            }
+          }));
+          fxUse(b.parentElement.querySelector('.item'), '#c46bff');
           sel.clear();
           Meta.add('voyUsed');
           if (Meta.data.stats.voyUsed >= 5) Meta.unlock('voy5');
@@ -1176,7 +1312,9 @@
         }
         choices[i] = null;
         picks--;
-        if (picks <= 0 || choices.every(x => !x)) setTimeout(done, 450 / OPTS.speed);
+        const slow = p.kind === 'voyance' || p.kind === 'vinyl';
+        if (picks <= 0 || choices.every(x => !x)) setTimeout(done, (slow ? 1100 : 450) / OPTS.speed);
+        else if (slow) setTimeout(render, 900 / OPTS.speed);
         else render();
       });
       wireSupersIn(C.querySelector('.packo-c'), choices.filter(x => x && x.card));
@@ -1215,9 +1353,11 @@
     confetti();
     const newStake = Meta.data.stake > before ? `<p class="unl">Nouvelle mise débloquée : <b style="color:${Meta.STAKES[Meta.data.stake].c}">${Meta.STAKES[Meta.data.stake].n}</b></p>` : '';
     showCenter(`<div class="end win"><h2>Roi de la nuit !</h2>${newStake}
+      <p class="mute">Tu as battu le boss de la nuit ${NOCHES} : la partie est gagnée. Tu peux continuer en mode infini pour battre ton record.</p>
       <div class="band">${st.supers.map(sc => superHTML(sc)).join('')}</div>${runStats()}
-      <div class="acts"><button class="btn xl blue" id="b-again">Nouvelle partie</button><button class="btn lg orange" id="b-home">Menu</button></div></div>`, 'endc');
+      <div class="acts"><button class="btn xl rosa" id="b-endless">Continuer (mode infini)</button><button class="btn xl blue" id="b-again">Nouvelle partie</button><button class="btn lg orange" id="b-home">Menu</button></div></div>`, 'endc');
     wireSupersIn($('#center'), st.supers);
+    $('#b-endless').onclick = async () => { Sfx.play('click'); st.endless = true; Bg.set('table'); await hideCenter(); nextTanda(); };
     $('#b-again').onclick = () => { Sfx.play('click'); newRunModal(); };
     $('#b-home').onclick = () => { Sfx.play('click'); title(); };
   }
@@ -1269,6 +1409,7 @@
     DB = d;
     if (!DB.cards.length) DB.cards = (window.CHICHA_BASE || {}).cards || [];
     Unlocks.init(DB.cards);
+    Supers.init(DB.cards);
     Unlocks.check();
     title();
   }
