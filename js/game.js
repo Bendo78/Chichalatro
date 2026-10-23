@@ -1,353 +1,86 @@
-/* CHICHA POKER — game flow, scoring, shop and screens. */
+/* CHICHALATRO — screens, run flow, animated table, scoring, shop. */
 (function () {
   const $ = s => document.querySelector(s);
   const app = () => $('#app');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const fmt = n => Math.floor(n).toLocaleString('fr-FR');
-  const wait = ms => new Promise(r => setTimeout(r, ms / SPEED));
-  let SPEED = 1;
+  const rnd = a => a[Math.floor(Math.random() * a.length)];
 
-  // ---------- constants ----------
+  // ---------- options ----------
+  const OPTS = (() => { try { return Object.assign({ speed: 1, reduced: false }, JSON.parse(localStorage.getItem('chichalatro-opts') || '{}')); } catch (e) { return { speed: 1, reduced: false }; } })();
+  function saveOpts() { try { localStorage.setItem('chichalatro-opts', JSON.stringify(OPTS)); } catch (e) { } applyOpts(); }
+  function applyOpts() {
+    document.documentElement.style.setProperty('--spd', OPTS.speed);
+    document.body.classList.toggle('reduced', !!OPTS.reduced);
+    Bg.enable(!OPTS.reduced);
+  }
+  const wait = ms => new Promise(r => setTimeout(r, ms / OPTS.speed));
+
+  // ---------- rules ----------
   const NOCHES = 8;
   const BASE_TARGET = [300, 800, 2000, 5000, 11000, 20000, 35000, 50000];
   const TANDAS = [
-    { n: 'Tanda chica', mul: 1, reward: 3 },
-    { n: 'Tanda grande', mul: 1.5, reward: 4 },
-    { n: 'El Jefe', mul: 2, reward: 5 }
+    { n: 'Tanda chica', short: 'TC', reward: 3, mul: 1, col: '#18d6ff' },
+    { n: 'Tanda grande', short: 'TG', reward: 4, mul: 1.5, col: '#ff7a00' },
+    { n: 'El Jefe', short: 'JF', reward: 5, mul: 2, col: '#ff2e88' }
   ];
   const BOSSES = [
     { id: 'suit', n: 'El Cobrador', d: s => `Les ${s} ne rapportent rien` },
     { id: 'hands', n: 'La Tacaña', d: () => 'Une main de moins' },
     { id: 'nodisc', n: 'El Apagón', d: () => 'Aucune défausse' },
     { id: 'size', n: 'El Estrecho', d: () => 'Une carte de moins en main' },
-    { id: 'five', n: 'La Exigente', d: () => 'Chaque main doit avoir 5 cartes' }
+    { id: 'five', n: 'La Exigente', d: () => 'Chaque main doit avoir 5 cartes' },
+    { id: 'face', n: 'El Serio', d: () => 'Les figures ne rapportent rien' },
+    { id: 'pricey', n: 'La Cobradora', d: () => 'Chaque main jouée coûte S/ 1' }
   ];
+  const EXAMPLES = {
+    high: 'A♠ seul', pair: '7♥ 7♣', two: '7♥ 7♣ · 4♦ 4♠', three: 'D♥ D♣ D♦', straight: '5 6 7 8 9',
+    flush: '5 cartes ♥', full: 'R R R · 3 3', four: '9 9 9 9', sflush: '5♠ 6♠ 7♠ 8♠ 9♠'
+  };
   const HUES = { feu: 14, eau: 200, nature: 130, foudre: 50, psy: 290, ombre: 255 };
 
   let DB = { cards: [], series: [], backs: {}, source: 'base' };
   let st = null;
+  const cardEls = new Map();
 
-  // ---------- helpers ----------
-  function best() { try { return +localStorage.getItem('chicha-best') || 0; } catch (e) { return 0; } }
-  function saveBest(n) { try { if (n > best()) localStorage.setItem('chicha-best', n); } catch (e) { } }
   const seriesOf = c => DB.series.find(s => s.id === c.s);
-  const targetFor = (noche, t) => Math.round(BASE_TARGET[Math.min(noche, NOCHES) - 1] * TANDAS[t].mul);
   const levelOf = id => st.levels[id] || 1;
   function handValue(h) { const L = levelOf(h.id); return { chips: h.c + (L - 1) * h.lc, mult: h.m + (L - 1) * h.lm }; }
-
-  function noArt(c) {
-    const ini = (c.n || '?').replace(/^(L'|Le |La |Les )/i, '').split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-    return `<div class="noart" style="--h:${HUES[c.t] || 330}"><span>${esc(ini)}</span></div>`;
+  function targetFor(noche, t) {
+    const mul = t === 2 && st.stake >= 4 ? 2.5 : TANDAS[t].mul;
+    const v = BASE_TARGET[Math.min(noche, NOCHES) - 1] * mul * (st.stake >= 2 ? 1.25 : 1);
+    return Math.round(v / 50) * 50;
+  }
+  const rewardFor = t => (t === 0 && st.stake >= 1 ? 0 : TANDAS[t].reward);
+  const isBoss = () => st.tanda === 2;
+  function debuffed(card) {
+    if (!isBoss()) return false;
+    if (st.boss.id === 'suit') return card.suit === st.boss.suit;
+    if (st.boss.id === 'face') return Poker.isFace(card);
+    return false;
   }
 
-  // Photo framing saved by the TCG editor: fx/fy = focus point in %, fz = zoom.
-  function frame(c) {
-    const x = isFinite(+c.fx) ? +c.fx : 50, y = isFinite(+c.fy) ? +c.fy : 50, z = +c.fz > 0 ? +c.fz : 1;
-    return `object-position:${x}% ${y}%;transform-origin:${x}% ${y}%${z !== 1 ? `;transform:scale(${z})` : ''}`;
-  }
-
-  // ---------- rendering pieces ----------
-  function playingCardHTML(c, extra) {
-    const s = Poker.suitOf(c.suit), lb = Poker.label(c);
-    const off = st && st.boss && st.boss.id === 'suit' && st.tanda === 2 && st.boss.suit === c.suit;
-    return `<button class="pc s-${s.col}${off ? ' off' : ''} ${extra || ''}" data-uid="${c.uid}" aria-label="${lb} de ${s.n}">
-      <span class="pc-r">${lb}<i>${s.s}</i></span><span class="pc-s">${s.s}</span><span class="pc-r pc-r2">${lb}<i>${s.s}</i></span></button>`;
-  }
-
-  function superHTML(sc, o) {
-    o = o || {};
-    const c = sc.card, ph = ChichaData.photo(c), back = DB.backs[c.s], tier = Supers.TIERS[sc.tier];
-    const ser = seriesOf(c);
-    return `<div class="sc ${tier.cls} fam-${sc.fam}${o.flip ? ' flip' : ''}" data-uid="${sc.uid}" tabindex="0" role="button" aria-label="${esc(c.n)} — ${esc(Supers.liveText(sc))}">
-      <div class="sc-in">
-        <div class="sc-f">
-          ${ph && /^data:video|\.(mp4|webm|mov)(\?|$)/i.test(ph) ? `<video src="${esc(ph)}" autoplay muted loop playsinline preload="metadata" style="${frame(c)}"></video>` : ph ? `<img src="${esc(ph)}" alt="" loading="lazy" style="${frame(c)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'noart',innerHTML:'<span>?</span>'}))">` : noArt(c)}
-          <div class="sc-tier">${tier.n}</div>
-          <div class="sc-name">${esc(c.n)}</div>
-        </div>
-        <div class="sc-b"${back ? ` style="--back:url('${esc(back)}')"` : ''}>
-          <div class="sc-bn">${esc(c.n)}</div>
-          ${c.an ? `<p class="sc-atk">${esc(c.an)}</p>` : ''}
-          ${c.f ? `<p class="sc-desc">« ${esc(c.f)} »</p>` : ''}
-          <div class="sc-eff">${esc(Supers.liveText(sc))}</div>
-          <div class="sc-meta">${esc(sc.famName)} · ${tier.n}${ser ? ' · ' + esc(ser.code || ser.n) : ''}</div>
-          ${o.actions || ''}
-        </div>
-      </div>
-      ${o.caption ? `<div class="sc-cap">${esc(Supers.liveText(sc))}</div>` : ''}
-    </div>`;
-  }
-
-  function wireFlip(root) {
-    root.querySelectorAll('.sc').forEach(el => {
-      const toggle = e => { if (e.target.closest('button')) return; el.classList.toggle('flip'); };
-      el.addEventListener('click', toggle);
-      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); } });
-    });
-  }
-
+  // ---------- small UI helpers ----------
   function toast(msg) {
     const t = document.createElement('div');
     t.className = 'toast'; t.textContent = msg;
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 2600);
   }
-
-  function logo(big) {
-    return `<h1 class="logo${big ? ' big' : ''}"><span class="l1">CHICHA</span><span class="l2">POKER</span></h1>`;
-  }
-
-  // ---------- title ----------
-  function title() {
-    const n = DB.cards.length;
-    const src = DB.source === 'supabase'
-      ? `<b class="ok">●</b> ${n} super cartes chargées depuis Supabase`
-      : `<b class="warn">●</b> ${n} super cartes (set de base). Connecte-toi avec ton compte CHICHA TCG pour charger toutes tes cartes.`;
-    app().innerHTML = `<section class="screen title">
-      <div class="stripes" aria-hidden="true"></div>
-      ${logo(true)}
-      <p class="tag">Joue des mains de poker · bats la noche · recrute des super cartes</p>
-      <div class="fan">${DB.cards.slice().sort((a, b) => (Supers.TIER_OF[b.r] || 1) - (Supers.TIER_OF[a.r] || 1)).slice(0, 5).map((c, i) => `<div style="--i:${i - 2}">${superHTML(Supers.make(c, seriesOf(c)))}</div>`).join('')}</div>
-      <div class="acts">
-        <button class="btn big rosa" id="b-play">¡JUGAR!</button>
-        <button class="btn" id="b-col">Collection</button>
-        <button class="btn" id="b-login">${DB.user ? 'Déconnexion' : 'Connexion TCG'}</button>
-      </div>
-      <p class="src">${src}</p>
-      ${best() ? `<p class="src">Meilleure noche : <b>${best()}</b></p>` : ''}
-      <details class="rules"><summary>Comment jouer</summary>
-        <p>Sélectionne jusqu'à 5 cartes et joue une main de poker. Score = <b>Jetons × Mult</b>. Atteins l'objectif de chaque tanda avant d'épuiser tes mains. Chaque noche a 3 tandas, la dernière est un Jefe avec une règle spéciale. Entre les tandas, dépense tes Soles pour recruter des super cartes (tes cartes CHICHA TCG) qui changent le score. Clique une super carte pour la retourner et lire son effet. Survis à 8 noches.</p>
-      </details>
-    </section>`;
-    $('#b-play').onclick = newRun;
-    $('#b-col').onclick = collection;
-    $('#b-login').onclick = DB.user ? async () => { await ChichaData.signOut(); await boot(); } : loginForm;
-    wireFlip(app());
-  }
-
-  function loginForm() {
+  function modal(html, cls) {
     const ov = document.createElement('div');
     ov.className = 'ov';
-    ov.innerHTML = `<form class="modal" id="lf">
-      <h2>Compte CHICHA TCG</h2>
-      <p class="mute">Utilise le même compte que sur CHICHA TCG pour charger toutes les cartes.</p>
-      <label>E-mail<input type="email" name="e" required autocomplete="email"></label>
-      <label>Mot de passe<input type="password" name="p" required autocomplete="current-password"></label>
-      <p class="err" hidden></p>
-      <div class="acts"><button class="btn rosa" type="submit">Connexion</button><button class="btn" type="button" id="lf-x">Annuler</button></div>
-    </form>`;
+    ov.innerHTML = `<div class="panel ${cls || ''}">${html}</div>`;
     document.body.appendChild(ov);
-    ov.querySelector('#lf-x').onclick = () => ov.remove();
-    ov.querySelector('#lf').onsubmit = async e => {
-      e.preventDefault();
-      const f = e.target, err = f.querySelector('.err');
-      try {
-        await ChichaData.signIn(f.e.value.trim(), f.p.value);
-        ov.remove();
-        await boot();
-        toast(DB.source === 'supabase' ? `${DB.cards.length} cartes chargées` : 'Connecté, mais les cartes n\'ont pas pu être lues');
-      } catch (x) { err.hidden = false; err.textContent = x.message || 'Connexion impossible'; }
-    };
+    const close = () => { ov.classList.add('out'); setTimeout(() => ov.remove(), 200); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    ov.close = close;
+    return ov;
   }
-
-  // ---------- collection ----------
-  function collection() {
-    const order = ['feu', 'eau', 'foudre', 'nature', 'psy', 'ombre'];
-    const all = DB.cards.map(c => Supers.make(c, seriesOf(c)))
-      .sort((a, b) => b.tier - a.tier || order.indexOf(a.fam) - order.indexOf(b.fam));
-    app().innerHTML = `<section class="screen col">
-      <header class="bar"><button class="btn" id="b-back">← Retour</button>${logo()}<span class="mute">${all.length} cartes · clique pour retourner</span></header>
-      <div class="grid">${all.map(sc => superHTML(sc)).join('')}</div>
-    </section>`;
-    $('#b-back').onclick = title;
-    wireFlip(app());
-  }
-
-  // ---------- run ----------
-  function newRun() {
-    st = {
-      noche: 1, tanda: 0, soles: 4, supers: [], maxSupers: 5,
-      handSizeBase: 8, handsBase: 4, discardsBase: 3,
-      levels: {}, deck: Poker.newDeck(), bossBag: [], sort: 'rank', rerollCost: 5
-    };
-    pickBoss();
-    map();
-  }
-
-  function pickBoss() {
-    if (!st.bossBag.length) st.bossBag = Poker.shuffle(BOSSES.slice());
-    const b = Object.assign({}, st.bossBag.pop());
-    if (b.id === 'suit') { const s = Poker.SUITS[Math.floor(Math.random() * 4)]; b.suit = s.k; b.desc = b.d(s.s); }
-    else b.desc = b.d();
-    st.boss = b;
-  }
-
-  function hud() {
-    return `<aside class="hud">
-      ${logo()}
-      <div class="blind t${st.tanda}"><small>Noche ${st.noche}/${NOCHES}</small><b>${TANDAS[st.tanda].n}</b>${st.tanda === 2 ? `<em>${esc(st.boss.n)} : ${esc(st.boss.desc)}</em>` : ''}</div>
-      <div class="goal"><small>Objectif</small><b>${fmt(st.target || 0)}</b></div>
-      <div class="score"><small>Score</small><b id="h-score">${fmt(st.score || 0)}</b></div>
-      <div class="calc"><div id="h-name">&nbsp;</div><div class="cm"><span class="chips" id="h-chips">0</span><i>×</i><span class="mult" id="h-mult">0</span></div></div>
-      <div class="stats">
-        <div><small>Mains</small><b class="azul" id="h-hands">${st.hands ?? st.handsBase}</b></div>
-        <div><small>Défausses</small><b class="rosa" id="h-disc">${st.discards ?? st.discardsBase}</b></div>
-        <div><small>Soles</small><b class="amarillo" id="h-soles">S/ ${st.soles}</b></div>
-      </div>
-      <button class="btn sm" id="h-levels">Niveaux des mains</button>
-    </aside>`;
-  }
-
-  function levelsModal() {
-    const ov = document.createElement('div');
-    ov.className = 'ov';
-    ov.innerHTML = `<div class="modal"><h2>Niveaux des mains</h2><table>${Poker.HANDS.slice().reverse().map(h => {
-      const v = handValue(h); return `<tr><td>${h.n}</td><td>niv. ${levelOf(h.id)}</td><td><span class="chips">${v.chips}</span> × <span class="mult">${v.mult}</span></td></tr>`;
-    }).join('')}</table><div class="acts"><button class="btn rosa">Fermer</button></div></div>`;
-    document.body.appendChild(ov);
-    ov.querySelector('button').onclick = () => ov.remove();
-  }
-
-  function map() {
-    app().innerHTML = `<section class="screen map">
-      ${hud()}
-      <div class="main">
-        <h2 class="h">Noche ${st.noche}</h2>
-        <div class="tandas">${TANDAS.map((t, i) => `<div class="tanda t${i}${i === st.tanda ? ' cur' : i < st.tanda ? ' done' : ''}">
-          <b>${t.n}</b>
-          ${i === 2 ? `<p class="boss"><span>${esc(st.boss.n)}</span>${esc(st.boss.desc)}</p>` : '<p class="boss">&nbsp;</p>'}
-          <small>Objectif</small><strong>${fmt(targetFor(st.noche, i))}</strong>
-          <small>Récompense</small><em>S/ ${t.reward}</em>
-          ${i === st.tanda ? '<button class="btn rosa" id="b-go">¡Vamos!</button>' : i < st.tanda ? '<span class="stamp">Pasó</span>' : ''}
-        </div>`).join('')}</div>
-        ${supersRow()}
-      </div>
-    </section>`;
-    $('#b-go').onclick = startRound;
-    $('#h-levels').onclick = levelsModal;
-    wireSupers();
-  }
-
-  function supersRow() {
-    return `<div class="supers"><div class="supers-h"><b>Super cartes</b><span>${st.supers.length}/${st.maxSupers}</span></div>
-      <div class="supers-list">${st.supers.map((sc, i) => superHTML(sc, {
-        caption: true,
-        actions: `<div class="sc-act"><button class="mini" data-mv="-1" data-i="${i}" aria-label="Déplacer à gauche">◀</button><button class="mini sell" data-sell="${i}">Vendre S/ ${Math.max(1, Math.floor(sc.price / 2))}</button><button class="mini" data-mv="1" data-i="${i}" aria-label="Déplacer à droite">▶</button></div>`
-      })).join('') || '<p class="empty">Aucune super carte. Recrute-les dans la Bodega.</p>'}</div></div>`;
-  }
-
-  function wireSupers() {
-    const root = document.querySelector('.supers');
-    if (!root) return;
-    wireFlip(root);
-    root.querySelectorAll('[data-sell]').forEach(b => b.onclick = () => {
-      const i = +b.dataset.sell, sc = st.supers[i];
-      st.soles += Math.max(1, Math.floor(sc.price / 2));
-      st.supers.splice(i, 1);
-      refreshSupers();
-    });
-    root.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => {
-      const i = +b.dataset.i, j = i + +b.dataset.mv;
-      if (j < 0 || j >= st.supers.length) return;
-      [st.supers[i], st.supers[j]] = [st.supers[j], st.supers[i]];
-      refreshSupers(st.supers[j].uid);
-    });
-  }
-
-  function refreshSupers(keepFlipped) {
-    const root = document.querySelector('.supers');
-    if (!root) return;
-    root.outerHTML = supersRow();
-    if (keepFlipped) { const el = document.querySelector(`.supers .sc[data-uid="${keepFlipped}"]`); if (el) el.classList.add('flip'); }
-    wireSupers();
-    const s = $('#h-soles'); if (s) s.textContent = 'S/ ' + st.soles;
-  }
-
-  // ---------- round ----------
-  function startRound() {
-    const boss = st.tanda === 2 ? st.boss.id : null;
-    st.target = targetFor(st.noche, st.tanda);
-    st.score = 0;
-    st.hands = st.handsBase - (boss === 'hands' ? 1 : 0);
-    st.discards = boss === 'nodisc' ? 0 : st.discardsBase;
-    st.handSize = st.handSizeBase - (boss === 'size' ? 1 : 0);
-    st.draw = Poker.shuffle(st.deck.slice());
-    st.hand = [];
-    st.sel = new Set();
-    st.busy = false;
-    draw();
-    roundScreen();
-  }
-
-  function draw() {
-    while (st.hand.length < st.handSize && st.draw.length) st.hand.push(st.draw.pop());
-    sortHand();
-  }
-  function sortHand() {
-    const so = 'CKTP';
-    st.hand.sort(st.sort === 'rank' ? (a, b) => b.v - a.v || so.indexOf(a.suit) - so.indexOf(b.suit)
-      : (a, b) => so.indexOf(a.suit) - so.indexOf(b.suit) || b.v - a.v);
-  }
-
-  function roundScreen() {
-    app().innerHTML = `<section class="screen round">
-      ${hud()}
-      <div class="main">
-        ${supersRow()}
-        <div class="table"><div class="played" id="played"></div></div>
-        <div class="hand" id="hand"></div>
-        <div class="controls">
-          <button class="btn rosa" id="b-playhand">Jouer la main</button>
-          <div class="sortb"><small>Trier</small><button class="btn sm" id="b-sr">Valeur</button><button class="btn sm" id="b-ss">Couleur</button></div>
-          <button class="btn verde" id="b-disc">Défausser</button>
-        </div>
-        <div class="deckc"><span>${st.draw.length}</span>/${st.deck.length}</div>
-      </div>
-    </section>`;
-    $('#b-playhand').onclick = playHand;
-    $('#b-disc').onclick = discard;
-    $('#b-sr').onclick = () => { st.sort = 'rank'; sortHand(); renderHand(); };
-    $('#b-ss').onclick = () => { st.sort = 'suit'; sortHand(); renderHand(); };
-    $('#h-levels').onclick = levelsModal;
-    wireSupers();
-    renderHand();
-  }
-
-  function renderHand() {
-    const h = $('#hand');
-    const n = st.hand.length;
-    h.innerHTML = st.hand.map((c, i) => playingCardHTML(c, st.sel.has(c.uid) ? 'sel' : '').replace('class="pc', `style="--i:${i - (n - 1) / 2}" class="pc`)).join('');
-    h.querySelectorAll('.pc').forEach(b => b.onclick = () => {
-      if (st.busy) return;
-      const u = +b.dataset.uid;
-      if (st.sel.has(u)) st.sel.delete(u);
-      else if (st.sel.size < 5) st.sel.add(u);
-      b.classList.toggle('sel', st.sel.has(u));
-      preview();
-    });
-    const dc = document.querySelector('.deckc span'); if (dc) dc.textContent = st.draw.length;
-    preview();
-  }
-
-  function selected() { return st.hand.filter(c => st.sel.has(c.uid)); }
-
-  function preview() {
-    const sel = selected();
-    const five = st.tanda === 2 && st.boss.id === 'five';
-    $('#b-playhand').disabled = st.busy || !sel.length || st.hands <= 0 || (five && sel.length !== 5);
-    $('#b-disc').disabled = st.busy || !sel.length || st.discards <= 0;
-    if (st.busy) return;
-    if (!sel.length) { setCalc('&nbsp;', 0, 0); return; }
-    const ev = Poker.evaluate(sel), v = handValue(ev.hand);
-    setCalc(`${ev.hand.n} <small>niv. ${levelOf(ev.hand.id)}</small>`, v.chips, v.mult);
-  }
-
-  function setCalc(name, chips, mult) {
-    if (name != null) $('#h-name').innerHTML = name;
-    $('#h-chips').textContent = fmt(chips);
-    $('#h-mult').textContent = Math.round(mult * 100) / 100;
-  }
-
+  function bump(el) { if (!el) return; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+  function setStat(id, val) { const el = document.getElementById(id); if (el) { el.textContent = val; bump(el); } }
   function pop(el, text, cls) {
     if (!el) return;
     const r = el.getBoundingClientRect();
@@ -357,239 +90,855 @@
     p.style.left = r.left + r.width / 2 + 'px';
     p.style.top = r.top + 'px';
     document.body.appendChild(p);
-    el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
-    setTimeout(() => p.remove(), 900 / SPEED);
+    bump(el);
+    setTimeout(() => p.remove(), 1000 / OPTS.speed);
+  }
+  function shake() { if (OPTS.reduced) return; const r = $('#run'); if (!r) return; r.classList.remove('shake'); void r.offsetWidth; r.classList.add('shake'); }
+  function countTo(el, from, to, ms) {
+    return new Promise(res => {
+      const t0 = performance.now(), d = ms / OPTS.speed; let tick = 0;
+      const f = now => {
+        const k = Math.min(1, (now - t0) / d), v = from + (to - from) * (1 - Math.pow(1 - k, 3));
+        el.textContent = fmt(v);
+        if (now - tick > 70) { Sfx.play('score'); tick = now; }
+        k < 1 ? requestAnimationFrame(f) : res();
+      };
+      requestAnimationFrame(f);
+    });
+  }
+  function richEffect(t) {
+    return esc(t)
+      .replace(/(×[\d.,]+ Mult)/g, '<b class="fx-x">$1</b>')
+      .replace(/(\+\d+ Mult)/g, '<b class="fx-m">$1</b>')
+      .replace(/(\+\d+ Jetons)/g, '<b class="fx-c">$1</b>')
+      .replace(/(\d+ Soles?)/g, '<b class="fx-s">$1</b>');
+  }
+  const chipIcon = (t, label) => `<span class="chipico" style="--bc:${t.col}"><b>${label || t.short}</b></span>`;
+
+  // ---------- super cards ----------
+  function frame(c) {
+    const x = isFinite(+c.fx) ? +c.fx : 50, y = isFinite(+c.fy) ? +c.fy : 50, z = +c.fz > 0 ? +c.fz : 1;
+    return `object-position:${x}% ${y}%;transform-origin:${x}% ${y}%${z !== 1 ? `;transform:scale(${z})` : ''}`;
+  }
+  function media(c) {
+    const ph = ChichaData.photo(c);
+    if (ph && /^data:video|\.(mp4|webm|mov)(\?|$)/i.test(ph)) return `<video src="${esc(ph)}" autoplay muted loop playsinline preload="metadata" style="${frame(c)}"></video>`;
+    if (ph) return `<img src="${esc(ph)}" alt="" loading="lazy" style="${frame(c)}">`;
+    const ini = (c.n || '?').replace(/^(L'|Le |La |Les )/i, '').split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    return `<div class="noart" style="--h:${HUES[c.t] || 330}"><span>${esc(ini)}</span></div>`;
+  }
+  function superHTML(sc, o) {
+    o = o || {};
+    const c = sc.card, back = DB.backs[c.s], tier = Supers.TIERS[sc.tier], ser = seriesOf(c);
+    return `<div class="sc ${tier.cls} fam-${sc.fam}${o.flip ? ' flip' : ''}${o.isNew ? ' new' : ''}" data-uid="${sc.uid}" tabindex="0" role="button" aria-label="${esc(c.n)} : ${esc(Supers.liveText(sc))}">
+      <div class="sway" style="--d:${(-Math.random() * 4).toFixed(2)}s"><div class="sc-in">
+        <div class="sc-f">${media(c)}<span class="sc-tier">${tier.n}</span><span class="sc-name">${esc(c.n)}</span><i class="glare"></i></div>
+        <div class="sc-b"${back ? ` style="--back:url('${esc(back)}')"` : ''}>
+          <span class="sc-bn">${esc(c.n)}</span>
+          ${c.an ? `<span class="sc-atk">${esc(c.an)}</span>` : ''}
+          ${c.f ? `<p class="sc-desc">« ${esc(c.f)} »</p>` : ''}
+          <span class="sc-eff">${richEffect(Supers.liveText(sc))}</span>
+          <span class="sc-meta">${esc(sc.famName)} · ${tier.n}${ser ? ' · ' + esc(ser.code || ser.n) : ''}</span>
+          ${o.actions || ''}
+        </div>
+      </div></div>
+    </div>`;
+  }
+  function wireSuper(el, sc) {
+    const toggle = e => { if (e.target.closest('button')) return; el.classList.toggle('flip'); Sfx.play('flip'); hideTip(); };
+    el.addEventListener('click', toggle);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); } });
+    if (sc) {
+      el.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse' && !el.classList.contains('flip')) showTip(el, sc); Sfx.play('hover'); });
+      el.addEventListener('pointerleave', hideTip);
+    }
+    const g = el.querySelector('.sc-f');
+    el.addEventListener('pointermove', e => {
+      const r = el.getBoundingClientRect();
+      el.style.setProperty('--tx', ((0.5 - (e.clientY - r.top) / r.height) * 18).toFixed(1) + 'deg');
+      el.style.setProperty('--ty', (((e.clientX - r.left) / r.width - 0.5) * 18).toFixed(1) + 'deg');
+      g && g.style.setProperty('--gx', ((e.clientX - r.left) / r.width * 100).toFixed(0) + '%');
+    });
+    el.addEventListener('pointerleave', () => { el.style.setProperty('--tx', '0deg'); el.style.setProperty('--ty', '0deg'); });
+  }
+  function wireSupersIn(root, list) {
+    root.querySelectorAll('.sc').forEach(el => wireSuper(el, list && list.find(s => s.uid === el.dataset.uid)));
+  }
+  function showTip(el, sc) {
+    hideTip();
+    const t = document.createElement('div'), tier = Supers.TIERS[sc.tier];
+    t.className = 'tip ' + tier.cls; t.id = 'tip';
+    t.innerHTML = `<b>${esc(sc.card.n)}</b><span class="eff">${richEffect(Supers.liveText(sc))}</span>${sc.card.f ? `<em>« ${esc(sc.card.f)} »</em>` : ''}<small><i>${tier.n}</i> ${esc(sc.famName)}</small>`;
+    document.body.appendChild(t);
+    const r = el.getBoundingClientRect(), tr = t.getBoundingClientRect();
+    let x = r.left + r.width / 2 - tr.width / 2, y = r.bottom + 10;
+    if (y + tr.height > innerHeight - 8) y = r.top - tr.height - 10;
+    t.style.left = Math.max(8, Math.min(innerWidth - tr.width - 8, x)) + 'px';
+    t.style.top = Math.max(8, y) + 'px';
+  }
+  function hideTip() { const t = $('#tip'); if (t) t.remove(); }
+
+  // ---------- title ----------
+  function title() {
+    st = null; cardEls.clear(); hideTip();
+    Bg.set('menu');
+    const n = DB.cards.length;
+    app().innerHTML = `<section class="title">
+      ${Art.logo('big')}
+      <div class="menu-btns">
+        <button class="btn xl blue" id="b-play">Jouer</button>
+        <button class="btn xl orange" id="b-opt">Options</button>
+        <button class="btn xl rosa" id="b-col">Collection</button>
+        <button class="btn xl green" id="b-ach">Succès</button>
+      </div>
+      <p class="src">${DB.source === 'supabase' ? `<b class="ok">●</b> ${n} super cartes CHICHA TCG chargées` : `<b class="warn">●</b> ${n} super cartes (set de base)`}
+        · <button class="link" id="b-login">${DB.user ? 'Déconnexion' : 'Connexion TCG'}</button></p>
+    </section>`;
+    $('#b-play').onclick = () => { Sfx.play('click'); newRunModal(); };
+    $('#b-opt').onclick = () => { Sfx.play('click'); optionsModal(); };
+    $('#b-col').onclick = () => { Sfx.play('click'); collection(); };
+    $('#b-ach').onclick = () => { Sfx.play('click'); achievementsModal(); };
+    $('#b-login').onclick = DB.user ? async () => { await ChichaData.signOut(); boot(); } : loginForm;
+  }
+
+  function loginForm() {
+    const ov = modal(`<form id="lf" class="form">
+      <h2>Compte CHICHA TCG</h2>
+      <label>E-mail<input type="email" name="e" required autocomplete="email"></label>
+      <label>Mot de passe<input type="password" name="p" required autocomplete="current-password"></label>
+      <p class="err" hidden></p>
+      <div class="acts"><button class="btn blue" type="submit">Connexion</button><button class="btn" type="button" id="lf-x">Annuler</button></div>
+    </form>`);
+    ov.querySelector('#lf-x').onclick = ov.close;
+    ov.querySelector('#lf').onsubmit = async e => {
+      e.preventDefault();
+      const f = e.target, err = f.querySelector('.err');
+      try { await ChichaData.signIn(f.e.value.trim(), f.p.value); ov.close(); boot(); }
+      catch (x) { err.hidden = false; err.textContent = x.message || 'Connexion impossible'; }
+    };
+  }
+
+  // ---------- new run: deck and difficulty ----------
+  function newRunModal() {
+    const M = Meta.data;
+    let di = Math.max(0, Meta.DECKS.findIndex(d => d.id === M.last.deck));
+    let stake = Math.min(M.last.stake || 0, M.stake);
+    const ov = modal(`<div class="nr">
+      <div class="tabs"><button class="on">Nouvelle partie</button><button id="nr-ach">Succès</button></div>
+      <div class="deckpick"><button class="arrow" id="dp-l" aria-label="Deck précédent">◀</button><div class="dp" id="dp"></div><button class="arrow" id="dp-r" aria-label="Deck suivant">▶</button></div>
+      <div class="dots" id="dots"></div>
+      <h3>Mise</h3>
+      <div class="stakes" id="sk"></div>
+      <div class="stake-d" id="skd"></div>
+      <div class="acts"><button class="btn xl blue" id="nr-go">Jouer</button><button class="btn" id="nr-x">Retour</button></div>
+    </div>`, 'wide');
+    const draw = () => {
+      const d = Meta.DECKS[di], open = Meta.deckUnlocked(d), a = d.ach && Meta.ACHIEVEMENTS.find(x => x.id === d.ach);
+      const won = M.deckWins[d.id];
+      ov.querySelector('#dp').innerHTML = `<div class="deckcard${open ? '' : ' locked'}">${Art.cardBack(d.color)}${open ? '' : '<span class="lock">🔒</span>'}</div>
+        <div class="deckinfo"><b style="color:${d.color}">${d.n}</b>
+          <p>${open ? esc(d.d) : `Verrouillé. Succès requis : <b>${esc(a.n)}</b><br><small>${esc(a.d)}</small>`}</p>
+          ${open && won != null ? `<small class="won">Gagné en Mise <i style="--c:${Meta.STAKES[won].c}">${Meta.STAKES[won].n}</i></small>` : ''}</div>`;
+      ov.querySelector('#dots').innerHTML = Meta.DECKS.map((x, i) => `<i class="${i === di ? 'on' : ''}${Meta.deckUnlocked(x) ? '' : ' lk'}"></i>`).join('');
+      ov.querySelector('#sk').innerHTML = Meta.STAKES.map((s, i) => `<button class="stake${i === stake ? ' on' : ''}${i > M.stake ? ' locked' : ''}" data-i="${i}" style="--c:${s.c}" ${i > M.stake ? 'disabled' : ''} aria-label="Mise ${s.n}"><i></i><span>${s.n}</span></button>`).join('');
+      ov.querySelector('#skd').innerHTML = `<b style="color:${Meta.STAKES[stake].c}">Mise ${Meta.STAKES[stake].n}</b>` + Meta.STAKES.slice(0, stake + 1).map(s => `<span>${esc(s.d)}</span>`).join('') + (M.stake < Meta.STAKES.length - 1 ? `<small>Gagne une partie en Mise ${Meta.STAKES[M.stake].n} pour débloquer la suivante.</small>` : '');
+      ov.querySelector('#nr-go').disabled = !open;
+      ov.querySelectorAll('.stake:not(.locked)').forEach(b => b.onclick = () => { stake = +b.dataset.i; Sfx.play('select'); draw(); });
+    };
+    ov.querySelector('#dp-l').onclick = () => { di = (di + Meta.DECKS.length - 1) % Meta.DECKS.length; Sfx.play('flip'); draw(); };
+    ov.querySelector('#dp-r').onclick = () => { di = (di + 1) % Meta.DECKS.length; Sfx.play('flip'); draw(); };
+    ov.querySelector('#nr-x').onclick = ov.close;
+    ov.querySelector('#nr-ach').onclick = () => { ov.close(); achievementsModal(); };
+    ov.querySelector('#nr-go').onclick = () => {
+      const d = Meta.DECKS[di];
+      if (!Meta.deckUnlocked(d)) return;
+      M.last = { deck: d.id, stake }; Meta.save();
+      ov.close(); Sfx.play('shuffle');
+      newRun(d.id, stake);
+    };
+    draw();
+  }
+
+  function achievementsModal() {
+    const M = Meta.data;
+    const got = Meta.ACHIEVEMENTS.filter(a => M.ach[a.id]).length;
+    const ov = modal(`<h2>Succès <small>${got}/${Meta.ACHIEVEMENTS.length}</small></h2>
+      <div class="achs">${Meta.ACHIEVEMENTS.map(a => {
+        const deck = Meta.DECKS.find(d => d.ach === a.id), ok = !!M.ach[a.id];
+        return `<div class="ach${ok ? ' ok' : ''}"><span class="trophy">${ok ? '🏆' : '🔒'}</span><span><b>${esc(a.n)}</b><small>${esc(a.d)}</small>${deck ? `<em style="--c:${deck.color}">Débloque : ${deck.n}</em>` : ''}</span></div>`;
+      }).join('')}</div>
+      <p class="mute">Parties gagnées : ${M.stats.wins} · Jefes battus : ${M.stats.bosses} · Meilleure main : ${fmt(M.stats.bestHand)}</p>
+      <div class="acts"><button class="btn blue" id="ac-x">Fermer</button></div>`, 'wide');
+    ov.querySelector('#ac-x').onclick = ov.close;
+  }
+
+  function optionsModal() {
+    const P = Sfx.prefs;
+    const ov = modal(`<h2>Options</h2>
+      <div class="opts">
+        <label class="tg"><input type="checkbox" id="o-sfx" ${P.sfx ? 'checked' : ''}><span>Effets sonores</span></label>
+        <label class="tg"><input type="checkbox" id="o-mus" ${P.music ? 'checked' : ''}><span>Musique cumbia</span></label>
+        <label>Volume<input type="range" id="o-vol" min="0" max="1" step="0.05" value="${P.vol}"></label>
+        <div class="seg"><span>Vitesse du jeu</span>${[1, 2, 4].map(v => `<button class="${OPTS.speed === v ? 'on' : ''}" data-sp="${v}">${v}×</button>`).join('')}</div>
+        <label class="tg"><input type="checkbox" id="o-red" ${OPTS.reduced ? 'checked' : ''}><span>Effets réduits (pas de fond animé ni de secousses)</span></label>
+      </div>
+      <div class="acts">${st ? '<button class="btn rosa" id="o-quit">Abandonner la partie</button>' : ''}<button class="btn blue" id="o-x">Fermer</button></div>`);
+    ov.querySelector('#o-sfx').onchange = e => { Sfx.set('sfx', e.target.checked); Sfx.play('click'); };
+    ov.querySelector('#o-mus').onchange = e => Sfx.set('music', e.target.checked);
+    ov.querySelector('#o-vol').oninput = e => Sfx.set('vol', +e.target.value);
+    ov.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { OPTS.speed = +b.dataset.sp; saveOpts(); ov.querySelectorAll('[data-sp]').forEach(x => x.classList.toggle('on', x === b)); Sfx.play('click'); });
+    ov.querySelector('#o-red').onchange = e => { OPTS.reduced = e.target.checked; saveOpts(); };
+    ov.querySelector('#o-x').onclick = ov.close;
+    const q = ov.querySelector('#o-quit');
+    if (q) q.onclick = () => { ov.close(); title(); };
+  }
+
+  // ---------- collection ----------
+  function collection() {
+    Bg.set('shop');
+    const order = ['feu', 'eau', 'foudre', 'nature', 'psy', 'ombre'];
+    const all = DB.cards.map(c => Supers.make(c, seriesOf(c))).sort((a, b) => b.tier - a.tier || order.indexOf(a.fam) - order.indexOf(b.fam));
+    let filter = 'all';
+    app().innerHTML = `<section class="col">
+      <header class="colbar"><button class="btn" id="b-back">← Menu</button><h2 class="ttl">Collection <small>${all.length} cartes</small></h2>
+        <div class="filters">${[['all', 'Toutes'], ...order.map(k => [k, Supers.TYPE_FAM[k]])].map(([k, n]) => `<button class="chip${k === 'all' ? ' on' : ''}" data-f="${k}">${n}</button>`).join('')}</div></header>
+      <div class="grid" id="grid"></div>
+    </section>`;
+    const draw = () => {
+      const list = all.filter(s => filter === 'all' || s.fam === filter);
+      $('#grid').innerHTML = list.map(sc => superHTML(sc)).join('');
+      wireSupersIn($('#grid'), list);
+    };
+    app().querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; app().querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x === b)); Sfx.play('click'); draw(); });
+    $('#b-back').onclick = () => { Sfx.play('click'); title(); };
+    draw();
+  }
+
+  // ---------- run setup ----------
+  function newRun(deckId, stake) {
+    const deck = Meta.DECKS.find(d => d.id === deckId) || Meta.DECKS[0];
+    st = {
+      deck, stake, noche: 1, tanda: 0, round: 0, soles: 4, supers: [], maxSupers: 5,
+      handSizeBase: 8, handsBase: 4, discardsBase: 3, interestMax: 5,
+      levels: {}, handCounts: {}, cards: Poker.newDeck(), bossBag: [], sort: 'rank', rerollCost: 5,
+      hand: [], draw: [], sel: new Set(), busy: false, phase: 'select', score: 0, target: 0, bestHand: 0, recruited: 0
+    };
+    if (deck.id === 'fiesta') st.discardsBase++;
+    if (deck.id === 'soles') { st.soles = 14; st.interestMax = 7; }
+    if (deck.id === 'neon') st.maxSupers = 6;
+    if (deck.id === 'cumbia') ['pair', 'two', 'three'].forEach(h => st.levels[h] = 2);
+    if (deck.id === 'jefe') { st.handsBase++; st.handSizeBase--; }
+    if (deck.id === 'escalera') ['straight', 'flush', 'sflush'].forEach(h => st.levels[h] = 3);
+    if (deck.id === 'leyenda') {
+      const legs = DB.cards.filter(c => Supers.TIER_OF[c.r] === 4);
+      if (legs.length) { const c = rnd(legs); st.supers.push(Supers.make(c, seriesOf(c))); }
+    }
+    if (stake >= 3) st.discardsBase--;
+    if (stake >= 5) st.handsBase--;
+    st.hands = st.handsBase; st.discards = st.discardsBase;
+    Meta.data.stats.runs++; Meta.save();
+    pickBoss();
+    runShell();
+    selectPhase();
+  }
+
+  function pickBoss() {
+    if (!st.bossBag.length) st.bossBag = Poker.shuffle(BOSSES.slice());
+    const b = Object.assign({}, st.bossBag.pop());
+    if (b.id === 'suit') { const s = rnd(Poker.SUITS); b.suit = s.k; b.desc = b.d(s.s); } else b.desc = b.d();
+    st.boss = b;
+    st.skipHands = [rnd(Poker.HANDS), rnd(Poker.HANDS)];
+  }
+
+  // ---------- run layout ----------
+  function runShell() {
+    app().innerHTML = `<section class="run" id="run">
+      <aside class="side" id="side"></aside>
+      <button class="combo-tab" id="combo-tab" aria-label="Voir les combos"><span>COMBOS</span></button>
+      <div class="drawer" id="drawer"></div>
+      <section class="stage" id="stage">
+        <div class="topbar"><div class="supers" id="supers"></div></div>
+        <div class="playzone" id="playzone"><div class="handname" id="handname"></div></div>
+        <div class="handzone" id="handzone"><div class="deck" id="deck"><div class="deckstack">${Art.cardBack(st.deck.color)}</div><span id="deckn"></span></div></div>
+        <div class="ctrl" id="ctrl">
+          <button class="btn blue" id="b-playhand">Jouer la main</button>
+          <div class="sortb"><small>Trier</small><div><button class="btn sm orange" id="b-sr">Valeur</button><button class="btn sm orange" id="b-ss">Couleur</button></div></div>
+          <button class="btn rosa" id="b-disc">Défausser</button>
+        </div>
+        <div class="cards" id="cards"></div>
+        <div class="center" id="center"></div>
+      </section>
+    </section>`;
+    $('#combo-tab').onclick = toggleDrawer;
+    $('#b-playhand').onclick = playHand;
+    $('#b-disc').onclick = discard;
+    $('#b-sr').onclick = () => { st.sort = 'rank'; sortHand(); layoutHand(); Sfx.play('slide'); };
+    $('#b-ss').onclick = () => { st.sort = 'suit'; sortHand(); layoutHand(); Sfx.play('slide'); };
+    sizeStage();
+    renderSide();
+    renderSupers();
+  }
+
+  function sizeStage() {
+    const s = $('#stage'); if (!s) return;
+    const w = s.clientWidth, h = s.clientHeight || innerHeight;
+    const cw = Math.round(Math.max(48, Math.min(112, w / 10.2, h / 5.6)));
+    s.style.setProperty('--cw', cw + 'px');
+  }
+  const cwPx = () => parseFloat(getComputedStyle($('#stage')).getPropertyValue('--cw')) || 90;
+  function rel(el) { const s = $('#stage').getBoundingClientRect(), r = el.getBoundingClientRect(); return { x: r.left - s.left, y: r.top - s.top, w: r.width, h: r.height }; }
+
+  function renderSide() {
+    const t = TANDAS[st.tanda];
+    let head;
+    if (st.phase === 'shop') head = `<div class="sign"><span class="bulbs"></span><b>BODEGA</b><small>¡Recrute ta bande!</small></div>`;
+    else if (st.phase === 'select') head = `<div class="sign pick"><b>Choisis</b><small>ta prochaine tanda</small></div>`;
+    else head = `<div class="blindbar" style="--bc:${t.col}">${isBoss() ? esc(st.boss.n) : t.n}</div>
+      <div class="blindbox" style="--bc:${t.col}">${chipIcon(t)}<div><small>Objectif minimum</small><b class="tgt">${fmt(st.target)}</b><em>Récompense : <span>${'S/' + rewardFor(st.tanda)}</span></em></div></div>
+      ${isBoss() ? `<p class="bossrule">${esc(st.boss.desc)}</p>` : ''}`;
+    $('#side').innerHTML = `<div class="head">${head}</div>
+      <div class="rs"><small>Score<br>de la tanda</small><b id="s-score">${fmt(st.score)}</b></div>
+      <div class="calc" id="calc"><div class="hn" id="s-hand">&nbsp;</div><div class="cm"><span class="chips" id="s-chips">0</span><i>×</i><span class="mult" id="s-mult">0</span></div></div>
+      <div class="sgrid">
+        <button class="btn rosa sq info" id="s-info">Infos<br>run</button>
+        <div class="stbox hands"><small>Mains</small><b class="c-blue" id="s-hands">${st.hands}</b></div>
+        <div class="stbox disc"><small>Défausses</small><b class="c-red" id="s-disc">${st.discards}</b></div>
+        <div class="stbox soles"><b class="c-gold" id="s-soles">S/ ${st.soles}</b></div>
+        <button class="btn orange sq opt" id="s-opt">Options</button>
+        <div class="stbox noche"><small>Noche</small><b><span class="c-gold">${st.noche}</span>/${NOCHES}</b></div>
+        <div class="stbox round"><small>Tanda</small><b class="c-gold">${st.round}</b></div>
+      </div>`;
+    $('#s-info').onclick = toggleDrawer;
+    $('#s-opt').onclick = () => { Sfx.play('click'); optionsModal(); };
+  }
+  function setCalc(name, chips, mult) {
+    if (name != null) $('#s-hand').innerHTML = name;
+    $('#s-chips').textContent = fmt(chips);
+    $('#s-mult').textContent = Math.round(mult * 100) / 100;
+    const calc = $('#calc');
+    const hot = st.target && chips * mult >= Math.max(1, st.target - st.score);
+    calc.classList.toggle('fire', !!hot && chips > 0);
+  }
+  function setSoles(v) { st.soles = v; setStat('s-soles', 'S/ ' + st.soles); if (st.soles >= 40) Meta.unlock('rich'); }
+
+  function renderDrawer() {
+    $('#drawer').innerHTML = `<h3>Combos de poker</h3><p class="mute">Niveau, valeur de base et nombre de fois jouée cette partie.</p>
+      <div class="combos">${Poker.HANDS.slice().reverse().map(h => {
+        const v = handValue(h), L = levelOf(h.id);
+        return `<div class="combo"><span class="lvl l${Math.min(L, 6)}">niv.${L}</span><span class="cbn"><b>${h.n}</b><small>${EXAMPLES[h.id]}</small></span><span class="cmx"><i class="c">${v.chips}</i>×<i class="m">${v.mult}</i></span><em>#${st.handCounts[h.id] || 0}</em></div>`;
+      }).join('')}</div>
+      <div class="runinfo"><b>${esc(st.deck.n)}</b> · Mise <i style="color:${Meta.STAKES[st.stake].c}">${Meta.STAKES[st.stake].n}</i></div>`;
+  }
+  function toggleDrawer() {
+    const d = $('#drawer'), open = !d.classList.contains('open');
+    if (open) renderDrawer();
+    d.classList.toggle('open', open);
+    $('#combo-tab').classList.toggle('open', open);
+    Sfx.play('slide');
+  }
+
+  function renderSupers(newUid) {
+    const box = $('#supers'); if (!box) return;
+    box.innerHTML = `<div class="sl">${st.supers.map((sc, i) => superHTML(sc, {
+      isNew: sc.uid === newUid,
+      actions: `<span class="sc-act"><button class="mini" data-mv="-1" data-i="${i}" aria-label="Déplacer à gauche">◀</button><button class="mini sell" data-sell="${i}">Vendre S/${Math.max(1, Math.floor(sc.price / 2))}</button><button class="mini" data-mv="1" data-i="${i}" aria-label="Déplacer à droite">▶</button></span>`
+    })).join('')}${Array.from({ length: Math.max(0, st.maxSupers - st.supers.length) }, () => '<span class="slot"></span>').join('')}</div>
+      <span class="cnt">${st.supers.length}/${st.maxSupers}</span>`;
+    wireSupersIn(box, st.supers);
+    box.querySelectorAll('[data-sell]').forEach(b => b.onclick = () => {
+      if (st.busy) return;
+      const i = +b.dataset.sell, sc = st.supers[i];
+      st.supers.splice(i, 1);
+      setSoles(st.soles + Math.max(1, Math.floor(sc.price / 2)));
+      Sfx.play('sell'); hideTip(); renderSupers();
+    });
+    box.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => {
+      const i = +b.dataset.i, j = i + +b.dataset.mv;
+      if (j < 0 || j >= st.supers.length) return;
+      [st.supers[i], st.supers[j]] = [st.supers[j], st.supers[i]];
+      Sfx.play('slide'); renderSupers();
+      const el = box.querySelector(`.sc[data-uid="${st.supers[j].uid}"]`); if (el) el.classList.add('flip');
+    });
+    if (st.supers.length >= 5) Meta.unlock('band');
+  }
+
+  // ---------- center panels (tanda choice, cash out, shop, end) ----------
+  function showCenter(html, cls) {
+    const c = $('#center');
+    c.className = 'center show ' + (cls || '');
+    c.innerHTML = `<div class="cpanel">${html}</div>`;
+    return c;
+  }
+  function hideCenter() { const c = $('#center'); c.classList.add('hide'); setTimeout(() => { c.className = 'center'; c.innerHTML = ''; }, 250); }
+  function showPlay(v) { $('#run').classList.toggle('playing', v); }
+
+  // ---------- tanda choice ----------
+  function selectPhase() {
+    st.phase = 'select';
+    Bg.set('table');
+    showPlay(false);
+    renderSide();
+    const cols = TANDAS.map((t, i) => {
+      const cur = i === st.tanda, done = i < st.tanda;
+      const skipH = i < 2 ? st.skipHands[i] : null;
+      return `<div class="bl${cur ? ' cur' : ''}${done ? ' done' : ''}${i > st.tanda ? ' next' : ''}" style="--bc:${t.col}">
+        <div class="bl-h">${cur ? '<button class="btn sm orange" id="b-go">Jouer</button>' : done ? '<span class="tag">Passée</span>' : '<span class="tag">À venir</span>'}</div>
+        <div class="bl-n">${i === 2 ? esc(st.boss.n) : t.n}</div>
+        ${chipIcon(t)}
+        ${i === 2 ? `<p class="bl-rule">${esc(st.boss.desc)}</p>` : ''}
+        <div class="bl-t"><small>Objectif minimum</small><b>${fmt(targetFor(st.noche, i))}</b><em>Récompense : S/${rewardFor(i)}</em></div>
+        ${skipH && cur ? `<div class="bl-skip"><small>ou</small><button class="btn sm rosa" id="b-skip">Sauter la tanda</button><span>Bonus : <b>${skipH.n}</b> +1 niveau</span></div>` : skipH ? `<div class="bl-skip dim"><small>Sauter : ${skipH.n} +1 niv.</small></div>` : ''}
+      </div>`;
+    }).join('');
+    showCenter(`<div class="bls">${cols}</div>`, 'select');
+    $('#b-go').onclick = () => { Sfx.play('click'); startRound(); };
+    const sk = $('#b-skip');
+    if (sk) sk.onclick = () => {
+      const h = st.skipHands[st.tanda];
+      st.levels[h.id] = levelOf(h.id) + 1;
+      Sfx.play('level'); toast(`${h.n} passe au niveau ${levelOf(h.id)}`);
+      if (levelOf(h.id) >= 4) Meta.unlock('cumbia4');
+      st.tanda++; selectPhase();
+    };
+  }
+
+  // ---------- round ----------
+  function startRound() {
+    const b = isBoss() ? st.boss.id : null;
+    st.round++;
+    st.target = targetFor(st.noche, st.tanda);
+    st.score = 0;
+    st.hands = st.handsBase - (b === 'hands' ? 1 : 0);
+    st.discards = b === 'nodisc' ? 0 : st.discardsBase;
+    st.handSize = st.handSizeBase - (b === 'size' ? 1 : 0);
+    st.draw = Poker.shuffle(st.cards.slice());
+    st.draw.forEach(c => c.where = 'deck');
+    st.hand = []; st.sel = new Set(); st.busy = false;
+    st.phase = 'play';
+    Bg.set(isBoss() ? 'boss' : 'table');
+    if (isBoss()) Sfx.play('boss');
+    hideCenter();
+    showPlay(true);
+    renderSide();
+    setCalc('&nbsp;', 0, 0);
+    updateDeckCount();
+    setTimeout(() => drawCards(), 200 / OPTS.speed);
+  }
+
+  function updateDeckCount() { const d = $('#deckn'); if (d) d.textContent = `${st.draw.length}/${st.cards.length}`; }
+  function sortHand() {
+    const so = 'CKTP';
+    st.hand.sort(st.sort === 'rank' ? (a, b) => b.v - a.v || so.indexOf(a.suit) - so.indexOf(b.suit)
+      : (a, b) => so.indexOf(a.suit) - so.indexOf(b.suit) || b.v - a.v);
+  }
+
+  function cardEl(card) {
+    let el = cardEls.get(card.uid);
+    if (el) return el;
+    el = document.createElement('div');
+    el.className = 'pc s-' + card.suit + (debuffed(card) ? ' off' : '');
+    el.dataset.uid = card.uid;
+    el.innerHTML = `<div class="sway" style="--d:${(-Math.random() * 3).toFixed(2)}s"><div class="c3d"><div class="face">${Art.cardFace(card)}</div><div class="bk">${Art.cardBack(st.deck.color)}</div></div></div>`;
+    el.addEventListener('click', () => toggleSel(card));
+    el.addEventListener('pointerenter', () => { if (card.where === 'hand' && !st.busy) Sfx.play('hover'); });
+    el.addEventListener('pointermove', e => {
+      const r = el.getBoundingClientRect();
+      el.style.setProperty('--tx', ((0.5 - (e.clientY - r.top) / r.height) * 20).toFixed(1) + 'deg');
+      el.style.setProperty('--ty', (((e.clientX - r.left) / r.width - 0.5) * 20).toFixed(1) + 'deg');
+    });
+    el.addEventListener('pointerleave', () => { el.style.setProperty('--tx', '0deg'); el.style.setProperty('--ty', '0deg'); });
+    $('#cards').appendChild(el);
+    cardEls.set(card.uid, el);
+    return el;
+  }
+  function place(el, x, y, r, s, z) {
+    el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) rotate(${(r || 0).toFixed(2)}deg) scale(${s || 1})`;
+    if (z != null) el.style.zIndex = z;
+  }
+  function deckPos() { const d = rel($('#deck')), w = cwPx(); return { x: d.x + (d.w - w) / 2, y: d.y + (d.h - w * 1.4) / 2 - 6 }; }
+
+  function layoutHand() {
+    if (!st || st.phase !== 'play') return;
+    const z = rel($('#handzone')), w = cwPx(), h = w * 1.4, n = st.hand.length;
+    if (!n) return;
+    const deckW = w * 1.5;
+    const avail = Math.max(w, z.w - deckW - 24);
+    const step = Math.min(w * 1.06, (avail - w) / Math.max(1, n - 1));
+    const total = step * (n - 1) + w;
+    const x0 = z.x + 12 + (avail - total) / 2;
+    st.hand.forEach((c, i) => {
+      const el = cardEl(c), k = i - (n - 1) / 2, sel = st.sel.has(c.uid);
+      el.classList.toggle('sel', sel);
+      place(el, x0 + i * step, z.y + (z.h - h) / 2 + k * k * (w / 60) - (sel ? h * 0.22 : 0), k * 2.2 * (sel ? 0.4 : 1), 1, 10 + i);
+    });
+  }
+  function layoutPlayed(cards, scoring) {
+    const z = rel($('#playzone')), w = cwPx(), h = w * 1.4, n = cards.length;
+    const step = Math.min(w * 1.12, (z.w - w) / Math.max(1, n - 1));
+    const x0 = z.x + (z.w - (step * (n - 1) + w)) / 2;
+    cards.forEach((c, i) => {
+      const el = cardEl(c), up = scoring.includes(c);
+      el.classList.remove('sel');
+      el.classList.toggle('dim', !up);
+      place(el, x0 + i * step, z.y + (z.h - h) / 2 + (up ? -h * 0.08 : h * 0.06), 0, up ? 1.04 : .96, 100 + i);
+    });
+  }
+
+  async function drawCards() {
+    const need = st.handSize - st.hand.length, fresh = [];
+    for (let i = 0; i < need && st.draw.length; i++) { const c = st.draw.pop(); c.where = 'hand'; st.hand.push(c); fresh.push(c); }
+    sortHand();
+    const d = deckPos();
+    fresh.forEach(c => { const el = cardEl(c); el.classList.add('down', 'notrans'); place(el, d.x, d.y, 0, 1, 300); });
+    void $('#cards').offsetWidth;
+    fresh.forEach((c, i) => {
+      const el = cardEls.get(c.uid);
+      el.classList.remove('notrans');
+      el.style.transitionDelay = (i * 70 / OPTS.speed) + 'ms';
+      setTimeout(() => { Sfx.play('deal'); el.classList.remove('down'); }, (i * 70 + 120) / OPTS.speed);
+    });
+    layoutHand();
+    updateDeckCount();
+    await wait(fresh.length * 70 + 420);
+    fresh.forEach(c => { const el = cardEls.get(c.uid); if (el) el.style.transitionDelay = ''; });
+    preview();
+  }
+
+  function flyAway(cards, toDeck) {
+    const s = $('#stage').getBoundingClientRect(), d = deckPos();
+    cards.forEach((c, i) => {
+      const el = cardEls.get(c.uid); if (!el) return;
+      c.where = 'gone';
+      el.style.transitionDelay = (i * 50 / OPTS.speed) + 'ms';
+      if (toDeck) { el.classList.add('down'); place(el, d.x, d.y, 0, 1, 300); }
+      else place(el, s.width + 140, rel(el).y - 80 - Math.random() * 60, 30 + Math.random() * 40, 1, 300);
+      cardEls.delete(c.uid);
+      setTimeout(() => el.remove(), (600 + i * 50) / OPTS.speed);
+    });
+  }
+
+  function selected() { return st.hand.filter(c => st.sel.has(c.uid)); }
+  function toggleSel(card) {
+    if (!st || st.busy || st.phase !== 'play' || card.where !== 'hand') return;
+    if (st.sel.has(card.uid)) { st.sel.delete(card.uid); Sfx.play('deselect'); }
+    else if (st.sel.size < 5) { st.sel.add(card.uid); Sfx.play('select'); }
+    else return;
+    layoutHand();
+    preview();
+  }
+  function preview() {
+    if (!st || st.phase !== 'play') return;
+    const sel = selected(), five = isBoss() && st.boss.id === 'five';
+    $('#b-playhand').disabled = st.busy || !sel.length || st.hands <= 0 || (five && sel.length !== 5);
+    $('#b-disc').disabled = st.busy || !sel.length || st.discards <= 0;
+    if (st.busy) return;
+    if (!sel.length) { setCalc('&nbsp;', 0, 0); return; }
+    const ev = Poker.evaluate(sel), v = handValue(ev.hand);
+    setCalc(`${ev.hand.n} <small>niv.${levelOf(ev.hand.id)}</small>`, v.chips, v.mult);
   }
 
   async function playHand() {
     const sel = selected();
-    if (!sel.length || st.busy) return;
+    if (!sel.length || st.busy || $('#b-playhand').disabled) return;
     st.busy = true;
     preview();
+    // keep the order the cards had in hand
     st.hand = st.hand.filter(c => !st.sel.has(c.uid));
     st.sel.clear();
     st.hands--;
-    $('#h-hands').textContent = st.hands;
-    renderHand();
-
+    setStat('s-hands', st.hands);
     const ev = Poker.evaluate(sel);
+    st.handCounts[ev.hand.id] = (st.handCounts[ev.hand.id] || 0) + 1;
+    if (ev.hand.id === 'sflush') Meta.unlock('sflush');
+    sel.forEach(c => c.where = 'played');
+    Sfx.play('slide');
+    layoutPlayed(sel, ev.scoring);
+    layoutHand();
     const v = handValue(ev.hand);
     let chips = v.chips, mult = v.mult;
+    setCalc(`${ev.hand.n} <small>niv.${levelOf(ev.hand.id)}</small>`, chips, mult);
+    const hn = $('#handname'); hn.innerHTML = `<b>${ev.hand.n}</b>`; bump(hn);
+    await wait(520);
+
+    if (isBoss() && st.boss.id === 'pricey') { setSoles(Math.max(0, st.soles - 1)); pop($('#s-soles'), '-S/1', 'off'); }
     const ctx = { hand: ev.hand, played: sel, scoring: ev.scoring, discardsLeft: st.discards, handsLeft: st.hands, isLastHand: st.hands === 0 };
-    const debuff = st.tanda === 2 && st.boss.id === 'suit' ? st.boss.suit : null;
-
-    // played cards on the table, scoring ones raised
-    const table = $('#played');
-    table.innerHTML = sel.map(c => playingCardHTML(c, ev.scoring.includes(c) ? 'up' : 'dim')).join('');
-    setCalc(`${ev.hand.n} <small>niv. ${levelOf(ev.hand.id)}</small>`, chips, mult);
-    await wait(450);
-
     st.supers.forEach(sc => sc.onPlayed && sc.onPlayed(ctx, sc));
 
+    let nc = 0, nm = 0;
     const apply = (res, el) => {
       if (!res) return false;
-      if (res.chips) { chips += res.chips; pop(el, '+' + res.chips, 'chips'); }
-      if (res.mult) { mult += res.mult; pop(el, '+' + res.mult + ' Mult', 'mult'); }
-      if (res.xmult) { mult *= res.xmult; pop(el, '×' + Math.round(res.xmult * 100) / 100 + ' Mult', 'xmult'); }
-      if (res.money) { st.soles += res.money; pop(el, '+S/ ' + res.money, 'money'); $('#h-soles').textContent = 'S/ ' + st.soles; }
+      if (res.chips) { chips += res.chips; pop(el, '+' + res.chips, 'chips'); Sfx.play('chip', nc++); bump($('#s-chips')); }
+      if (res.mult) { mult += res.mult; pop(el, '+' + res.mult + ' Mult', 'mult'); Sfx.play('mult', nm++); bump($('#s-mult')); }
+      if (res.xmult) { mult *= res.xmult; pop(el, '×' + Math.round(res.xmult * 100) / 100 + ' Mult', 'xmult'); Sfx.play('xmult'); bump($('#s-mult')); shake(); }
+      if (res.money) { setSoles(st.soles + res.money); pop(el, '+S/' + res.money, 'money'); Sfx.play('money'); }
       setCalc(null, chips, mult);
       return true;
     };
-    const scEl = sc => document.querySelector(`.supers .sc[data-uid="${sc.uid}"]`);
+    const scEl = sc => document.querySelector(`#supers .sc[data-uid="${sc.uid}"]`);
 
     for (let i = 0; i < ev.scoring.length; i++) {
-      const card = ev.scoring[i];
-      const el = table.querySelector(`.pc[data-uid="${card.uid}"]`);
-      if (debuff && card.suit === debuff) { pop(el, 'Bloqué', 'off'); await wait(350); continue; }
+      const card = ev.scoring[i], el = cardEls.get(card.uid);
+      if (debuffed(card)) { pop(el, 'Bloqué', 'off'); Sfx.play('deselect'); await wait(380); continue; }
       const times = 1 + st.supers.reduce((n, sc) => n + (sc.retrigger ? sc.retrigger(card, i, ctx, sc) : 0), 0);
       for (let t = 0; t < times; t++) {
-        if (t > 0) { pop(el, '¡Otra vez!', 'again'); await wait(260); }
+        if (t > 0) { pop(el, '¡Otra vez!', 'again'); Sfx.play('again'); await wait(300); }
         apply({ chips: Poker.chipsOf(card) }, el);
-        await wait(300);
-        for (const sc of st.supers) {
-          if (sc.perCard && apply(sc.perCard(card, ctx, sc), scEl(sc))) await wait(300);
-        }
+        await wait(330);
+        for (const sc of st.supers) if (sc.perCard && apply(sc.perCard(card, ctx, sc), scEl(sc))) await wait(330);
       }
     }
-    for (const sc of st.supers) {
-      if (sc.afterHand && apply(sc.afterHand(ctx, sc), scEl(sc))) await wait(380);
-    }
+    for (const sc of st.supers) if (sc.afterHand && apply(sc.afterHand(ctx, sc), scEl(sc))) await wait(420);
 
     const total = Math.floor(chips * mult);
-    $('#h-name').innerHTML = `<b class="total">${fmt(total)}</b>`;
-    await wait(500);
+    st.bestHand = Math.max(st.bestHand, total);
+    if (total > Meta.data.stats.bestHand) { Meta.data.stats.bestHand = total; Meta.save(); }
+    if (total >= 100000) Meta.unlock('big');
+    Sfx.play('total');
+    $('#s-hand').innerHTML = `<b class="total">${fmt(total)}</b>`;
+    bump($('#s-hand'));
+    if (total >= st.target) shake();
+    await wait(600);
+    const from = st.score;
     st.score += total;
-    const sEl = $('#h-score');
-    sEl.textContent = fmt(st.score);
-    sEl.classList.remove('bump'); void sEl.offsetWidth; sEl.classList.add('bump');
-    await wait(500);
-    table.innerHTML = '';
-    refreshSupers();
+    await countTo($('#s-score'), from, st.score, 650);
+    bump($('#s-score'));
+    hn.innerHTML = '';
+    flyAway(sel);
+    renderSupers();
+    await wait(380);
 
     if (st.score >= st.target) return roundWon();
     if (st.hands <= 0) return gameOver();
-    draw();
+    setCalc('&nbsp;', 0, 0);
+    await drawCards();
     st.busy = false;
-    renderHand();
+    preview();
   }
 
-  function discard() {
+  async function discard() {
     const sel = selected();
     if (!sel.length || st.discards <= 0 || st.busy) return;
+    st.busy = true;
     st.hand = st.hand.filter(c => !st.sel.has(c.uid));
     st.sel.clear();
     st.discards--;
+    setStat('s-disc', st.discards);
     st.supers.forEach(sc => sc.onDiscard && sc.onDiscard(sel.length, sc));
-    $('#h-disc').textContent = st.discards;
-    draw();
-    renderHand();
-    refreshSupers();
+    Sfx.play('slide');
+    flyAway(sel);
+    layoutHand();
+    renderSupers();
+    await wait(260);
+    await drawCards();
+    st.busy = false;
+    preview();
   }
 
   // ---------- end of round ----------
-  function roundWon() {
+  async function roundWon() {
+    Sfx.play('win');
+    flyAway(st.hand, true);
+    st.hand = [];
+    showPlay(false);
+    if (isBoss()) { Meta.data.stats.bosses++; Meta.save(); if (Meta.data.stats.bosses >= 10) Meta.unlock('jefes'); }
+    Meta.unlock('tanda1');
     const t = TANDAS[st.tanda];
-    const lines = [[`${t.n} gagnée`, t.reward]];
-    if (st.hands) lines.push([`Mains restantes (${st.hands})`, st.hands]);
-    const interest = Math.min(5, Math.floor(st.soles / 5));
-    if (interest) lines.push(['Intérêts (1 par 5 Soles, max 5)', interest]);
-    st.supers.forEach(sc => { const m = sc.endRound && sc.endRound(st, sc); if (m) lines.push([sc.card.n, m]); });
+    const lines = [];
+    if (rewardFor(st.tanda)) lines.push([`${isBoss() ? st.boss.n : t.n} battu`, rewardFor(st.tanda), 'gold']);
+    if (st.hands) lines.push([`${st.hands} main${st.hands > 1 ? 's' : ''} restante${st.hands > 1 ? 's' : ''} (S/1 chacune)`, st.hands, 'blue']);
+    const interest = Math.min(st.interestMax, Math.floor(st.soles / 5));
+    if (interest) lines.push([`1 d'intérêt par S/5 (max ${st.interestMax})`, interest, 'gold']);
+    st.supers.forEach(sc => { const m = sc.endRound && sc.endRound(st, sc); if (m) lines.push([sc.card.n, m, 'rosa']); });
     const sum = lines.reduce((s, l) => s + l[1], 0);
-    saveBest(st.noche);
-    app().querySelector('.main').innerHTML = `<div class="cash">
-      <h2 class="h">¡Ganaste!</h2>
-      <p class="mute">Score ${fmt(st.score)} / ${fmt(st.target)}</p>
-      <ul>${lines.map(l => `<li><span>${esc(l[0])}</span><b>S/ ${l[1]}</b></li>`).join('')}</ul>
-      <button class="btn big amarillo" id="b-cash">Cobrar S/ ${sum}</button>
-    </div>`;
-    $('#b-cash').onclick = () => {
-      st.soles += sum;
+    await wait(500);
+    showCenter(`<div class="cash">
+      <button class="btn xl orange" id="b-cash" disabled>Cobrar S/${sum}</button>
+      <div class="cash-h">${chipIcon(t)}<div><small>Objectif ${fmt(st.target)}</small><b>Score ${fmt(st.score)}</b></div><span class="dots"></span><em>S/${rewardFor(st.tanda)}</em></div>
+      <ul id="cash-l"></ul>
+    </div>`, 'cashout');
+    const ul = $('#cash-l');
+    for (const l of lines) {
+      await wait(330);
+      const li = document.createElement('li');
+      li.innerHTML = `<span>${esc(l[0])}</span><b class="c-${l[2]}">${'S/' + l[1]}</b>`;
+      ul.appendChild(li);
+      Sfx.play('money');
+    }
+    const b = $('#b-cash');
+    b.disabled = false;
+    b.onclick = () => {
+      setSoles(st.soles + sum);
+      Sfx.play('buy');
       if (st.tanda === 2 && st.noche === NOCHES) return victory();
       shop();
     };
   }
 
-  function advance() {
+  function nextTanda() {
     st.tanda++;
-    if (st.tanda > 2) { st.tanda = 0; st.noche++; pickBoss(); }
-    st.hands = undefined; st.discards = undefined; st.score = 0; st.target = 0;
-    map();
+    if (st.tanda > 2) { st.tanda = 0; st.noche++; pickBoss(); if (st.noche >= 4) Meta.unlock('noche4'); }
+    st.score = 0; st.target = 0;
+    st.hands = st.handsBase; st.discards = st.discardsBase;
+    selectPhase();
   }
 
   // ---------- shop ----------
   function shop() {
+    st.phase = 'shop';
     st.rerollCost = 5;
     st.offers = rollOffers();
     st.cumbias = Poker.shuffle(Poker.HANDS.slice()).slice(0, 2).map(h => ({ h, sold: false }));
-    shopScreen();
+    Bg.set('shop');
+    renderSide();
+    shopScreen(true);
   }
   function rollOffers() {
-    const owned = new Set(st.supers.map(sc => sc.card.id));
-    const out = [];
+    const owned = new Set(st.supers.map(sc => sc.card.id)), out = [];
     for (let i = 0; i < 3; i++) {
       const c = Supers.rollCard(DB.cards, new Set([...owned, ...out.map(o => o.card.id)]));
       out.push(Supers.make(c, seriesOf(c)));
     }
     return out;
   }
-
-  function shopScreen() {
-    app().innerHTML = `<section class="screen shop">
-      ${hud()}
-      <div class="main">
-        ${supersRow()}
-        <div class="bodega">
-          <div class="bodega-h"><h2 class="h">La Bodega</h2>
-            <div class="acts"><button class="btn verde" id="b-reroll">Relancer S/ ${st.rerollCost}</button><button class="btn rosa" id="b-next">Tanda suivante →</button></div></div>
-          <div class="offers">${st.offers.map((sc, i) => sc ? `<div class="offer">${superHTML(sc)}
-              <button class="btn sm amarillo" data-buy="${i}">Recruter S/ ${sc.price}</button></div>` : '<div class="offer sold">Vendu</div>').join('')}</div>
-          <div class="cumbias">${st.cumbias.map((o, i) => {
-            const v = handValue(o.h);
-            return `<div class="cumbia${o.sold ? ' sold' : ''}"><small>Cumbia</small><b>${o.h.n}</b><span>niv. ${levelOf(o.h.id)} → ${levelOf(o.h.id) + 1}</span>
-              <span><i class="chips">+${o.h.lc}</i> <i class="mult">+${o.h.lm} Mult</i></span>
-              <em>actuel ${v.chips} × ${v.mult}</em>
-              ${o.sold ? '<span class="stamp">Pasó</span>' : `<button class="btn sm amarillo" data-cum="${i}">S/ 3</button>`}</div>`;
-          }).join('')}</div>
-        </div>
+  function vinyl(h) {
+    return `<div class="vinyl"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48" fill="#120a18" stroke="#000" stroke-width="3"/>
+      ${[40, 33, 26].map(r => `<circle cx="50" cy="50" r="${r}" fill="none" stroke="#2a1d33" stroke-width="2"/>`).join('')}
+      <circle cx="50" cy="50" r="17" fill="#ff2e88" stroke="#000" stroke-width="2"/><circle cx="50" cy="50" r="3" fill="#000"/>
+      <path d="M50 33 A17 17 0 0 1 67 50 L50 50 Z" fill="#ffe600"/></svg></div>`;
+  }
+  function shopScreen(anim) {
+    showCenter(`<div class="shop">
+      <div class="shop-btns">
+        <button class="btn xl rosa" id="b-next">Tanda<br>suivante</button>
+        <button class="btn lg green" id="b-reroll">Relancer<br><b>S/${st.rerollCost}</b></button>
       </div>
-    </section>`;
-    $('#h-levels').onclick = levelsModal;
-    $('#b-next').onclick = advance;
-    $('#b-reroll').disabled = st.soles < st.rerollCost;
-    $('#b-reroll').onclick = () => {
-      if (st.soles < st.rerollCost) return;
-      st.soles -= st.rerollCost; st.rerollCost++;
-      st.offers = rollOffers();
-      shopScreen();
-    };
-    app().querySelectorAll('[data-buy]').forEach(b => {
-      const sc = st.offers[+b.dataset.buy];
-      b.disabled = st.soles < sc.price || st.supers.length >= st.maxSupers;
-      if (st.supers.length >= st.maxSupers) b.textContent = 'Plus de place';
+      <div class="offers">${st.offers.map((sc, i) => sc ? `<div class="offer"><span class="price">S/${sc.price}</span>${superHTML(sc)}<button class="btn sm blue buy" data-buy="${i}">Recruter</button></div>` : '<div class="offer sold"><span>Vendu</span></div>').join('')}</div>
+      <div class="cumbias">${st.cumbias.map((o, i) => {
+        const v = handValue(o.h);
+        return `<div class="cumbia${o.sold ? ' sold' : ''}"><span class="price">S/3</span>${vinyl(o.h)}<b>${o.h.n}</b><small>niv.${levelOf(o.h.id)} → ${levelOf(o.h.id) + 1}</small><span class="cmx"><i class="c">+${o.h.lc}</i><i class="m">+${o.h.lm}</i></span>
+          ${o.sold ? '<span class="tag">Écouté</span>' : `<button class="btn sm blue" data-cum="${i}">Écouter</button>`}</div>`;
+      }).join('')}</div>
+    </div>`, 'shopc' + (anim ? '' : ' still'));
+    $('#b-next').onclick = () => { Sfx.play('click'); hideCenter(); setTimeout(nextTanda, 200); };
+    const rr = $('#b-reroll');
+    rr.disabled = st.soles < st.rerollCost;
+    rr.onclick = () => { if (st.soles < st.rerollCost) return; setSoles(st.soles - st.rerollCost); st.rerollCost++; st.offers = rollOffers(); Sfx.play('shuffle'); shopScreen(); };
+    $('#center').querySelectorAll('[data-buy]').forEach(b => {
+      const sc = st.offers[+b.dataset.buy], full = st.supers.length >= st.maxSupers;
+      b.disabled = st.soles < sc.price || full;
+      if (full) b.textContent = 'Plus de place';
       b.onclick = () => {
-        st.soles -= sc.price;
+        setSoles(st.soles - sc.price);
         st.supers.push(sc);
         st.offers[+b.dataset.buy] = null;
-        toast(`${sc.card.n} rejoint ta bande`);
+        st.recruited++;
+        Sfx.play('buy');
+        renderSupers(sc.uid);
         shopScreen();
       };
     });
-    app().querySelectorAll('[data-cum]').forEach(b => {
+    $('#center').querySelectorAll('[data-cum]').forEach(b => {
       const o = st.cumbias[+b.dataset.cum];
       b.disabled = st.soles < 3;
       b.onclick = () => {
-        st.soles -= 3;
+        setSoles(st.soles - 3);
         st.levels[o.h.id] = levelOf(o.h.id) + 1;
         o.sold = true;
+        Sfx.play('level');
         toast(`${o.h.n} passe au niveau ${levelOf(o.h.id)}`);
+        if (levelOf(o.h.id) >= 4) Meta.unlock('cumbia4');
         shopScreen();
       };
     });
-    wireFlip(app().querySelector('.offers'));
-    wireSupers();
+    wireSupersIn($('#center').querySelector('.offers'), st.offers.filter(Boolean));
   }
 
   // ---------- end screens ----------
-  function gameOver() {
-    saveBest(st.noche - (st.tanda === 0 ? 1 : 0));
-    app().querySelector('.main').innerHTML = `<div class="cash over">
-      <h2 class="h">Se acabó la fiesta</h2>
-      <p>Score ${fmt(st.score)} / ${fmt(st.target)} · Noche ${st.noche}, ${TANDAS[st.tanda].n}</p>
-      <div class="acts"><button class="btn big rosa" id="b-again">Rejouer</button><button class="btn" id="b-home">Accueil</button></div>
+  function runStats() {
+    const most = Object.entries(st.handCounts).sort((a, b) => b[1] - a[1])[0];
+    return `<div class="rstats">
+      <div><small>Meilleure main</small><b>${fmt(st.bestHand)}</b></div>
+      <div><small>Main la plus jouée</small><b>${most ? Poker.HAND_BY_ID[most[0]].n + ' ×' + most[1] : '—'}</b></div>
+      <div><small>Noche atteinte</small><b>${st.noche}/${NOCHES}</b></div>
+      <div><small>Super cartes recrutées</small><b>${st.recruited}</b></div>
+      <div><small>Deck · Mise</small><b>${esc(st.deck.n)} · ${Meta.STAKES[st.stake].n}</b></div>
     </div>`;
-    $('#b-again').onclick = newRun;
-    $('#b-home').onclick = title;
+  }
+  function gameOver() {
+    Sfx.play('lose');
+    Bg.set('lose');
+    flyAway(st.hand, true);
+    st.hand = [];
+    showPlay(false);
+    Meta.data.stats.best = Math.max(Meta.data.stats.best, st.noche); Meta.save();
+    showCenter(`<div class="end lose"><h2>Se acabó la fiesta</h2><p>Score ${fmt(st.score)} / ${fmt(st.target)}</p>${runStats()}
+      <div class="acts"><button class="btn xl blue" id="b-again">Nouvelle partie</button><button class="btn lg orange" id="b-home">Menu</button></div></div>`, 'endc');
+    $('#b-again').onclick = () => { Sfx.play('click'); newRunModal(); };
+    $('#b-home').onclick = () => { Sfx.play('click'); title(); };
+  }
+  function victory() {
+    const before = Meta.data.stake;
+    Meta.winRun(st.deck.id, st.stake);
+    Sfx.play('achieve');
+    Bg.set('win');
+    confetti();
+    const newStake = Meta.data.stake > before ? `<p class="unl">Nouvelle mise débloquée : <b style="color:${Meta.STAKES[Meta.data.stake].c}">${Meta.STAKES[Meta.data.stake].n}</b></p>` : '';
+    showCenter(`<div class="end win"><h2>¡Campeón de la noche!</h2>${newStake}
+      <div class="band">${st.supers.map(sc => superHTML(sc)).join('')}</div>${runStats()}
+      <div class="acts"><button class="btn xl blue" id="b-again">Nouvelle partie</button><button class="btn lg orange" id="b-home">Menu</button></div></div>`, 'endc');
+    wireSupersIn($('#center'), st.supers);
+    $('#b-again').onclick = () => { Sfx.play('click'); newRunModal(); };
+    $('#b-home').onclick = () => { Sfx.play('click'); title(); };
+  }
+  function confetti() {
+    if (OPTS.reduced) return;
+    const box = document.createElement('div');
+    box.className = 'confetti';
+    const cols = ['#ff2e88', '#ff7a00', '#ffe600', '#2bff6e', '#18d6ff', '#a43bff'];
+    box.innerHTML = Array.from({ length: 90 }, () => `<i style="left:${Math.random() * 100}%;background:${rnd(cols)};animation-delay:${(Math.random() * 1.5).toFixed(2)}s;animation-duration:${(2.5 + Math.random() * 2).toFixed(2)}s;--r:${Math.round(Math.random() * 720 - 360)}deg"></i>`).join('');
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 5500);
   }
 
-  function victory() {
-    saveBest(NOCHES);
-    app().innerHTML = `<section class="screen title win">
-      <div class="stripes" aria-hidden="true"></div>
-      ${logo(true)}
-      <h2 class="h">¡Campeón de la noche!</h2>
-      <p class="tag">Tu as survécu aux ${NOCHES} noches avec ta bande :</p>
-      <div class="fan">${st.supers.map((sc, i) => `<div style="--i:${i - (st.supers.length - 1) / 2}">${superHTML(sc)}</div>`).join('')}</div>
-      <div class="acts"><button class="btn big rosa" id="b-again">Rejouer</button><button class="btn" id="b-home">Accueil</button></div>
-    </section>`;
-    $('#b-again').onclick = newRun;
-    $('#b-home').onclick = title;
-    wireFlip(app());
+  // ---------- achievement banner ----------
+  const achQueue = [];
+  let achBusy = false;
+  Meta.onUnlock((a, deck) => { achQueue.push([a, deck]); runAch(); });
+  function runAch() {
+    if (achBusy || !achQueue.length) return;
+    achBusy = true;
+    const [a, deck] = achQueue.shift();
+    const b = document.createElement('div');
+    b.className = 'achpop';
+    b.innerHTML = `<span class="trophy">🏆</span><span><small>Succès débloqué</small><b>${esc(a.n)}</b>${deck ? `<em style="--c:${deck.color}">Nouveau deck : ${deck.n}</em>` : `<i>${esc(a.d)}</i>`}</span>`;
+    document.body.appendChild(b);
+    Sfx.play('achieve');
+    setTimeout(() => { b.classList.add('out'); setTimeout(() => { b.remove(); achBusy = false; runAch(); }, 400); }, 3200);
   }
 
   // ---------- boot ----------
   async function boot() {
-    app().innerHTML = `<section class="screen title">${logo(true)}<p class="tag">Chargement des cartes…</p></section>`;
+    applyOpts();
+    app().innerHTML = `<section class="title">${Art.logo('big')}<p class="src">Chargement des cartes…</p></section>`;
     const d = await ChichaData.load();
     DB = d;
     if (!DB.cards.length) DB.cards = (window.CHICHA_BASE || {}).cards || [];
     title();
   }
 
+  window.addEventListener('resize', () => {
+    if (!st || !$('#stage')) return;
+    sizeStage();
+    layoutHand();
+  });
   document.addEventListener('keydown', e => {
-    if (e.key === 'f' && e.altKey) { SPEED = SPEED === 1 ? 2.5 : 1; toast(SPEED > 1 ? 'Animations rapides' : 'Animations normales'); }
+    if (!st || st.phase !== 'play' || e.target.closest('input,textarea') || document.querySelector('.ov')) return;
+    if (e.key === 'Enter') playHand();
+    if (e.key === 'd' || e.key === 'D') discard();
   });
 
   // Debug from the console: ChichaGame.state(), ChichaGame.give(soles)
-  window.ChichaGame = { boot, state: () => st, give: n => { if (st) { st.soles += n; refreshSupers(); } } };
+  window.ChichaGame = { boot, state: () => st, give: n => { if (st) setSoles(st.soles + n); } };
+  Bg.init();
   boot();
 })();
