@@ -31,7 +31,29 @@
     { id: 'size', n: 'Le RER B', q: 'Incident voyageur, serrez-vous.', d: () => 'Une carte de moins en main' },
     { id: 'five', n: 'La CAF', q: 'Dossier incomplet : il manque des pièces.', d: () => 'Chaque main doit avoir 5 cartes' },
     { id: 'face', n: 'Le Videur', q: 'Pas ce soir, les gars.', d: () => 'Les figures ne rapportent rien' },
-    { id: 'pricey', n: 'Les Impôts', q: 'Prélèvement à la source.', d: () => 'Chaque main jouée coûte 1 €' }
+    { id: 'pricey', n: 'Les Impôts', q: 'Prélèvement à la source.', d: () => 'Chaque main jouée coûte 1 €' },
+    { id: 'seum', n: 'Le Gros Seum', q: "J'ai le seum de ouf.", d: () => 'Les cartes paires (2, 4, 6, 8, 10) ne rapportent rien' },
+    { id: 'apagnan', n: 'Apagnan', q: "Pas d'As ce soir, quoicoubeh.", d: () => 'Les As ne rapportent rien' },
+    { id: 'daronne', n: 'La Daronne', q: 'Tu rentres avant minuit !', d: () => '4 cartes maximum par main' },
+    { id: 'avion', n: 'Le Mode Avion', q: 'Pas de réseau, désolé.', d: () => 'Tes super cartes ne marchent pas sur la première main' },
+    { id: 'ratio', n: 'Le Ratio', q: 'Ratio + flop + tu cuisines pas.', d: () => 'Le score de ta première main est divisé par 2' }
+  ];
+  // Names of the first two rounds of each night: picked at random, French memes and nightlife clichés.
+  const APEROS = [
+    ["L'Apéro Saucisson", 'Juste un petit verre, promis.'], ['Le Before chez Kévin', 'Ramène des chips.'],
+    ['La Pause Clope', 'Cinq minutes, pas plus.'], ["L'After-work", 'On parle pas du boulot.'],
+    ['Le Pique-nique Lidl', 'Les chips nature, évidemment.'], ['Le Barbecue du Daron', 'Laisse, je gère le feu.'],
+    ['Le Wesh Canapé', 'Ce soir on bouge pas.'], ["L'Askip", "Askip c'est facile."],
+    ['Le Coucou les Zamis', 'Bienvenue sur la chaîne.'], ['La Flemme Absolue', 'On verra demain.'],
+    ['Le Kebab de 2h', 'Salade tomate oignon.'], ['Le Ça Passe Tranquille', 'Tranquille, pépouze.']
+  ];
+  const SOIREES = [
+    ['La Soirée Mousse', 'Tout le monde est trempé.'], ['Le Karaoké Raté', 'Personne ne connaît les paroles.'],
+    ['La Boîte de Province', 'Entrée gratuite pour les filles.'], ['Le Tacos 3 Viandes', 'Sauce fromagère obligatoire.'],
+    ['Le Mariage du Cousin', 'Tout le monde danse la chenille.'], ['La Teuf chez Jordan', 'Ses parents sont partis.'],
+    ['Le Beer-Pong', 'Le gobelet du milieu vaut double.'], ['La Gênance Max', 'Personne ne sait quoi dire.'],
+    ['Le Quoicoubeh', 'Quoi ? Coubeh.'], ['Le Mode Enjailler', 'Ça va enjailler grave.'],
+    ['La Soirée Sans Fin', 'Il est déjà 6h ?'], ['Le Brunch du Lendemain', 'Café, croissant, regrets.']
   ];
   const EXAMPLES = {
     high: 'A♠ seul', pair: '7♥ 7♣', two: '7♥ 7♣ · 4♦ 4♠', three: 'D♥ D♣ D♦', straight: '5 6 7 8 9',
@@ -54,10 +76,13 @@
   }
   const rewardFor = t => (t === 0 && st.stake >= 1 ? 0 : TANDAS[t].reward);
   const isBoss = () => st.tanda === 2;
+  const tName = i => i === 2 ? st.boss.n : (st.names ? st.names[i][0] : TANDAS[i].n);
   function debuffed(card) {
     if (!isBoss()) return false;
     if (st.boss.id === 'suit') return Poker.suitIs(card, st.boss.suit);
     if (st.boss.id === 'face') return !Poker.isStone(card) && Poker.isFace(card);
+    if (st.boss.id === 'seum') return !Poker.isStone(card) && card.v <= 10 && card.v % 2 === 0;
+    if (st.boss.id === 'apagnan') return !Poker.isStone(card) && card.v === 14;
     return false;
   }
 
@@ -122,7 +147,9 @@
     p.className = 'pop ' + (cls || '');
     p.textContent = text;
     p.style.left = r.left + r.width / 2 + 'px';
-    p.style.top = r.top + 'px';
+    const below = r.top < 160;
+    if (below) p.classList.add('below');
+    p.style.top = (below ? r.bottom + 8 : r.top) + 'px';
     document.body.appendChild(p);
     bump(el);
     setTimeout(() => p.remove(), 1000 / OPTS.speed);
@@ -274,11 +301,11 @@
       <div class="acts"><button class="btn xl blue" id="nr-go">Jouer</button><button class="btn" id="nr-x">Retour</button></div>
     </div>`, 'wide');
     const draw = () => {
-      const d = Meta.DECKS[di], open = Meta.deckUnlocked(d), a = d.ach && Meta.ACHIEVEMENTS.find(x => x.id === d.ach);
+      const d = Meta.DECKS[di], open = Meta.deckUnlocked(d), a = Meta.deckReq(d) || { title: '', text: '' };
       const won = M.deckWins[d.id];
       ov.querySelector('#dp').innerHTML = `<div class="deckcard${open ? '' : ' locked'}">${Art.cardBack(d.color)}${open ? '' : '<span class="lock">🔒</span>'}</div>
         <div class="deckinfo"><b style="color:${d.color}">${d.n}</b>
-          <p>${open ? esc(d.d) : `Verrouillé. Succès requis : <b>${esc(a.n)}</b><br><small>${esc(a.d)}</small>`}</p>
+          <p>${open ? esc(d.d) : `Verrouillé. Pour le débloquer : <b>${esc(a.title)}</b><br><small>${esc(a.text)}</small>`}</p>
           ${open && won != null ? `<small class="won">Gagné en Mise <i style="--c:${Meta.STAKES[won].c}">${Meta.STAKES[won].n}</i></small>` : ''}</div>`;
       ov.querySelector('#dots').innerHTML = Meta.DECKS.map((x, i) => `<i class="${i === di ? 'on' : ''}${Meta.deckUnlocked(x) ? '' : ' lk'}"></i>`).join('');
       ov.querySelector('#sk').innerHTML = Meta.STAKES.map((s, i) => `<button class="stake${i === stake ? ' on' : ''}${i > M.stake ? ' locked' : ''}" data-i="${i}" style="--c:${s.c}" ${i > M.stake ? 'disabled' : ''} aria-label="Mise ${s.n}"><i></i><span>${s.n}</span></button>`).join('');
@@ -483,6 +510,7 @@
     if (b.id === 'suit') { const s = rnd(Poker.SUITS); b.suit = s.k; b.desc = b.d(s.s); } else b.desc = b.d();
     st.boss = b;
     st.skipHands = [rnd(Poker.HANDS), rnd(Poker.HANDS)];
+    st.names = [rnd(APEROS), rnd(SOIREES)];
   }
 
   // ---------- run layout ----------
@@ -540,7 +568,7 @@
       if (i < 0 || st.busy) return;
       const it = st.consumables.splice(i, 1)[0];
       setSoles(st.soles + Math.max(1, Math.floor(it.price / 2)));
-      Sfx.play('sell'); renderCons();
+      Sfx.play('sell'); renderCons(); refreshPanel();
     });
   }
 
@@ -673,7 +701,7 @@
     let head;
     if (st.phase === 'shop') head = `<div class="sign"><span class="bulbs"></span><b>CHICHACLUB</b><small>Recrute ta bande !</small></div>`;
     else if (st.phase === 'select') head = `<div class="sign pick"><b>Choisis</b><small>ta prochaine manche</small></div>`;
-    else head = `<div class="blindbar" style="--bc:${t.col}">${isBoss() ? esc(st.boss.n) : t.n}</div>
+    else head = `<div class="blindbar" style="--bc:${t.col}">${esc(tName(st.tanda))}</div>
       <div class="blindbox" style="--bc:${t.col}">${chipIcon(t)}<div><small>Objectif minimum</small><b class="tgt">${fmt(st.target)}</b><em>Récompense : <span>${rewardFor(st.tanda) + ' €'}</span></em></div></div>
       ${isBoss() ? `<p class="bossrule"><i>« ${esc(st.boss.q)} »</i>${esc(st.boss.desc)}</p>` : ''}`;
     $('#side').innerHTML = `<div class="head">${head}</div>
@@ -698,6 +726,7 @@
     const calc = $('#calc');
     const hot = st.target && chips * mult >= Math.max(1, st.target - st.score);
     calc.classList.toggle('fire', !!hot && chips > 0);
+    calc.classList.toggle('inferno', !!hot && chips > 0 && chips * mult >= 3 * Math.max(1, st.target - st.score));
   }
   function setSoles(v) { st.soles = v; setStat('s-soles', st.soles + ' €'); Meta.max('maxSoles', st.soles); if (st.soles >= 40) Meta.unlock('rich'); }
 
@@ -730,7 +759,7 @@
       const i = +b.dataset.sell, sc = st.supers[i];
       st.supers.splice(i, 1);
       setSoles(st.soles + Math.max(1, Math.floor(sc.price / 2)));
-      Sfx.play('sell'); hideTip(); renderSupers();
+      Sfx.play('sell'); hideTip(); renderSupers(); refreshPanel();
     });
     box.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => {
       const i = +b.dataset.i, j = i + +b.dataset.mv;
@@ -760,6 +789,8 @@
       res();
     }, 250 / OPTS.speed));
   }
+  // The shop or the open pack registers how to redraw itself (used after selling a card).
+  function refreshPanel() { if (st && st.phase === 'shop' && st.panelRefresh) st.panelRefresh(); }
   function showPlay(v) { $('#run').classList.toggle('playing', v); }
 
   // ---------- tanda choice ----------
@@ -773,7 +804,8 @@
       const skipH = i < 2 ? st.skipHands[i] : null;
       return `<div class="bl${cur ? ' cur' : ''}${done ? ' done' : ''}${i > st.tanda ? ' next' : ''}" style="--bc:${t.col}">
         <div class="bl-h">${cur ? '<button class="btn sm orange" id="b-go">Jouer</button>' : done ? '<span class="tag">Passée</span>' : '<span class="tag">À venir</span>'}</div>
-        <div class="bl-n">${i === 2 ? esc(st.boss.n) : t.n}</div>
+        <div class="bl-n">${esc(tName(i))}</div>
+        ${i < 2 ? `<p class="bl-q">« ${esc(st.names[i][1])} »</p>` : ''}
         ${chipIcon(t)}
         ${i === 2 ? `<p class="bl-rule"><i>« ${esc(st.boss.q)} »</i>${esc(st.boss.desc)}</p>` : ''}
         <div class="bl-t"><small>Objectif minimum</small><b>${fmt(targetFor(st.noche, i))}</b><em>Récompense : ${rewardFor(i)} €</em></div>
@@ -912,7 +944,7 @@
   function toggleSel(card) {
     if (!st || st.busy || st.phase !== 'play' || card.where !== 'hand') return;
     if (st.sel.has(card.uid)) { st.sel.delete(card.uid); Sfx.play('deselect'); }
-    else if (st.sel.size < 5) { st.sel.add(card.uid); Sfx.play('select'); }
+    else if (st.sel.size < (isBoss() && st.boss.id === 'daronne' ? 4 : 5)) { st.sel.add(card.uid); Sfx.play('select'); }
     else return;
     layoutHand();
     preview();
@@ -959,7 +991,10 @@
       firstHand: !st.handsPlayedRound, discUsed: st.discUsedRound || 0
     };
     st.handsPlayedRound = (st.handsPlayedRound || 0) + 1;
-    st.supers.forEach(sc => sc.onPlayed && sc.onPlayed(ctx, sc));
+    const offline = isBoss() && st.boss.id === 'avion' && ctx.firstHand;
+    const supersOn = offline ? [] : st.supers;
+    if (offline) { toast('Mode Avion : tes super cartes sont hors ligne pour cette main'); }
+    supersOn.forEach(sc => sc.onPlayed && sc.onPlayed(ctx, sc));
 
     let nc = 0, nm = 0;
     const apply = (res, el) => {
@@ -976,7 +1011,7 @@
     for (let i = 0; i < ev.scoring.length; i++) {
       const card = ev.scoring[i], el = cardEls.get(card.uid);
       if (debuffed(card)) { pop(el, 'Bloqué', 'off'); Sfx.play('deselect'); await wait(380); continue; }
-      const times = 1 + st.supers.reduce((n, sc) => n + (sc.retrigger ? sc.retrigger(card, i, ctx, sc) : 0), 0);
+      const times = 1 + supersOn.reduce((n, sc) => n + (sc.retrigger ? sc.retrigger(card, i, ctx, sc) : 0), 0);
       for (let t = 0; t < times; t++) {
         if (t > 0) { pop(el, 'Encore !', 'again'); Sfx.play('again'); await wait(300); }
         apply({ chips: Poker.isStone(card) ? 50 : Poker.chipsOf(card) }, el);
@@ -992,13 +1027,13 @@
           if (Math.random() < 1 / 15) { apply({ money: 20 }, el); hit = true; await wait(260); }
           if (!hit) { pop(el, 'Pas de chance', 'off'); await wait(200); }
         }
-        if (!Poker.isStone(card)) for (const sc of st.supers) if (sc.perCard && apply(sc.perCard(card, ctx, sc), scEl(sc))) await wait(330);
+        if (!Poker.isStone(card)) for (const sc of supersOn) if (sc.perCard && apply(sc.perCard(card, ctx, sc), scEl(sc))) await wait(330);
       }
     }
     // cards held in hand: Acier
     for (const c of st.hand) if (c.enh === 'acier' && !debuffed(c)) { apply({ xmult: 1.5 }, cardEls.get(c.uid)); await wait(330); }
     // super cards: Néon / Holo before the card's effect, Arc-en-ciel after
-    for (const sc of st.supers) {
+    for (const sc of supersOn) {
       if (sc.ed === 'neon') { apply({ chips: 50 }, scEl(sc)); await wait(300); }
       if (sc.ed === 'holo') { apply({ mult: 10 }, scEl(sc)); await wait(300); }
       if (sc.afterHand && apply(sc.afterHand(ctx, sc), scEl(sc))) await wait(420);
@@ -1008,7 +1043,8 @@
     const broken = ev.scoring.filter(c => c.enh === 'verre' && !debuffed(c) && Math.random() < .25);
     for (const c of broken) { pop(cardEls.get(c.uid), 'Brisée !', 'off'); Sfx.play('xmult'); st.cards = st.cards.filter(x => x !== c); }
 
-    const total = Math.floor(chips * mult);
+    let total = Math.floor(chips * mult);
+    if (isBoss() && st.boss.id === 'ratio' && ctx.firstHand) { total = Math.floor(total / 2); toast('Le Ratio : score de la première main divisé par 2'); }
     st.bestHand = Math.max(st.bestHand, total);
     Meta.max('bestHand', total);
     if (total >= 100000) Meta.unlock('big');
@@ -1069,7 +1105,7 @@
     Meta.unlock('tanda1');
     const t = TANDAS[st.tanda];
     const lines = [];
-    if (rewardFor(st.tanda)) lines.push([`${isBoss() ? st.boss.n : t.n} battu`, rewardFor(st.tanda), 'gold']);
+    if (rewardFor(st.tanda)) lines.push([`${tName(st.tanda)} battu`, rewardFor(st.tanda), 'gold']);
     if (st.hands) lines.push([`${st.hands} main${st.hands > 1 ? 's' : ''} restante${st.hands > 1 ? 's' : ''} (1 € chacune)`, st.hands, 'blue']);
     const iMax = st.interestMax + modSum('interest');
     const interest = Math.min(iMax, Math.floor(st.soles / 5));
@@ -1151,6 +1187,7 @@
     return `<div class="offer itm"><span class="price">${priceOf(o.price)} €</span>${itemBox(itemArt(o), itemName(o), itemDesc(o))}<button class="btn sm blue buy" data-buy="${i}">Acheter</button></div>`;
   }
   function shopScreen(anim) {
+    st.panelRefresh = () => shopScreen();
     const vo = st.voucherOffer, vp = vo ? priceOf(vo.v.price || 10) : 0;
     showCenter(`<div class="shop">
       <div class="shop-btns">
@@ -1260,6 +1297,7 @@
     };
     const done = () => { shopScreen(); };
     const render = () => {
+      st.panelRefresh = render;
       showCenter(`<div class="packo" style="--pc:${p.col}">
         <div class="packo-h"><b>${esc(p.n)}</b><span>Choisis encore <i>${picks}</i> carte${picks > 1 ? 's' : ''}</span><button class="btn sm orange" id="pk-skip">Passer</button></div>
         ${p.kind === 'voyance' ? `<div class="mini-hand">${temp.map(c => miniCard(c, sel.has(c.uid) ? 'sel' : '')).join('')}</div><p class="mute small">Sélectionne des cartes de ton deck ci-dessus, puis utilise une carte Voyance.</p>` : ''}

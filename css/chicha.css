@@ -697,3 +697,39 @@ body.reduced { background: radial-gradient(120% 100% at 50% 0, #2a1033, #120a18)
 .pck-sub { bottom: 7% !important; }
 .voy-nm { font-size: 8.6px !important; letter-spacing: .02em; }
 .pck-ico .suits { font-size: calc(var(--cw) * .22); }
+
+/* ===== v4: no clipping, popups under top cards, real flames ===== */
+.center.show { padding: 30px 14px 0; }
+.offers, .packs, .packo-c { padding-top: 18px; }
+.shop, .packo, .cash, .end { margin-top: 6px; }
+.bls { padding: 18px 10px 6px; }
+.bl-q { margin: -4px 0 0; font-size: 11.5px; font-style: italic; color: var(--mute); }
+
+/* power popups of the top row go under the card */
+.pop.below { transform: translate(-50%, 0); animation-name: popDown; }
+@keyframes popDown { from { opacity: 0; margin-top: -10px; transform: translate(-50%, 0) scale(.6); } 15% { opacity: 1; margin-top: 0; transform: translate(-50%, 0) scale(1.15); } 30% { transform: translate(-50%, 0) scale(1); } 75% { opacity: 1; } to { opacity: 0; margin-top: 26px; transform: translate(-50%, 0) scale(1); } }
+
+/* flames on the chips / mult boxes */
+.cm span { isolation: isolate; }
+.calc.fire .cm span::before, .calc.fire .cm span::after { content: ""; position: absolute; left: 6%; right: 6%; bottom: 55%; z-index: -1; border-radius: 50% 50% 35% 35%; transform-origin: 50% 100%; pointer-events: none; }
+.calc.fire .cm span::before { height: 44px; filter: blur(1.5px); animation: flame .28s ease-in-out infinite alternate; }
+.calc.fire .cm span::after { height: 30px; left: 22%; right: 22%; filter: blur(.5px); animation: flame .2s ease-in-out infinite alternate-reverse; }
+.calc.fire .cm .chips::before { background: radial-gradient(60% 85% at 50% 100%, #e6fbff, #3fc4ff 40%, #0a6fd1 65%, transparent 80%); }
+.calc.fire .cm .chips::after { background: radial-gradient(60% 85% at 50% 100%, #fff, #9be7ff 50%, transparent 80%); }
+.calc.fire .cm .mult::before { background: radial-gradient(60% 85% at 50% 100%, #fff6c8, #ffb23c 35%, #ff3b2e 60%, transparent 80%); }
+.calc.fire .cm .mult::after { background: radial-gradient(60% 85% at 50% 100%, #fff, #ffe08a 50%, transparent 80%); }
+.calc.fire .cm span { box-shadow: 0 4px 0 var(--bd, #000), 0 0 18px rgba(255, 120, 40, .55); animation: heat 0.5s ease-in-out infinite alternate; }
+.calc.fire .cm .chips { box-shadow: 0 4px 0 var(--c-blue-d), 0 0 18px rgba(60, 190, 255, .6); }
+.calc.fire .cm .mult { box-shadow: 0 4px 0 var(--c-red-d), 0 0 22px rgba(255, 90, 40, .75); }
+@keyframes heat { to { filter: brightness(1.18); } }
+@keyframes flame { from { transform: scaleY(.8) scaleX(1.05) skewX(-6deg); } to { transform: scaleY(1.25) scaleX(.92) skewX(6deg); } }
+.calc.inferno .cm span::before { height: 78px; left: -6%; right: -6%; }
+.calc.inferno .cm span::after { height: 50px; }
+.calc.inferno { animation: shakeLite .25s infinite; }
+@keyframes shakeLite { 25% { transform: translate(-1px, 1px); } 75% { transform: translate(1px, -1px); } }
+.calc.fire .hn .total { color: #ffe08a; text-shadow: 0 0 14px #ff7a00, 0 3px 0 #000; }
+body.reduced .calc.inferno { animation: none; }
+
+.bl.next, .bl.done { transform: none; }
+.bl.next { filter: brightness(.65); } .bl.done { filter: grayscale(.7) brightness(.5); }
+.center.show { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.2) transparent; }

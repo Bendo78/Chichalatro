@@ -5,19 +5,19 @@
 
   const DECKS = [
     { id: 'rosa', n: 'Deck Rose', d: 'Le deck de base. Aucun bonus.', color: '#ff2e88' },
-    { id: 'fiesta', n: 'Deck Teuf', d: '+1 défausse à chaque manche.', color: '#ff7a00', ach: 'tanda1' },
+    { id: 'fiesta', n: 'Deck Teuf', d: '+1 défausse à chaque manche.', color: '#ff7a00' },
     { id: 'soles', n: 'Deck Thune', d: 'Commence avec 14 €. Intérêts jusqu\'à 7 € par manche.', color: '#ffe600', ach: 'rich' },
     { id: 'neon', n: 'Deck Néon', d: '+1 emplacement de super carte.', color: '#18d6ff', ach: 'band' },
     { id: 'cumbia', n: 'Deck Cumbia', d: 'Paire, Double paire et Brelan commencent au niveau 2.', color: '#2bff6e', ach: 'cumbia4' },
-    { id: 'jefe', n: 'Deck Patron', d: '+1 main à chaque manche, mais 1 carte de moins en main.', color: '#a43bff', ach: 'noche4' },
-    { id: 'escalera', n: 'Deck Suite', d: 'Quinte, Couleur et Quinte flush commencent au niveau 3.', color: '#00e0b0', ach: 'sflush' },
-    { id: 'leyenda', n: 'Deck Légende', d: 'Commence avec une super carte Légendaire débloquée au hasard.', color: '#ffd84a', ach: 'champion' },
+    { id: 'jefe', n: 'Deck Patron', d: '+1 main à chaque manche, mais 1 carte de moins en main.', color: '#a43bff', win: { deck: 'rosa', stake: 0 } },
+    { id: 'escalera', n: 'Deck Suite', d: 'Quinte, Couleur et Quinte flush commencent au niveau 3.', color: '#00e0b0', win: { deck: 'cumbia', stake: 0 } },
+    { id: 'leyenda', n: 'Deck Légende', d: 'Commence avec une super carte Légendaire débloquée au hasard.', color: '#ffd84a', win: { deck: 'fiesta', stake: 1 } },
     { id: 'voyant', n: 'Deck Voyant', d: 'Commence avec le ticket Boule de cristal et une carte Voyance.', color: '#c46bff', ach: 'voy5' },
     { id: 'disco', n: 'Deck Disco', d: 'Commence avec le ticket Disquaire et 2 Vinyles.', color: '#13b86b', ach: 'vin5' },
     { id: 'bijou', n: 'Deck Bijou', d: '12 cartes du deck commencent avec une amélioration au hasard.', color: '#ffc93c', ach: 'enh10' },
     { id: 'damier', n: 'Deck Damier', d: 'Seulement des ♥ et des ♠ (26 de chaque).', color: '#e5126a', ach: 'flush10' },
     { id: 'vide', n: 'Deck Sans Tête', d: 'Aucune figure : 40 cartes seulement.', color: '#8a7f73', ach: 'pack5' },
-    { id: 'peintre', n: 'Deck Peintre', d: '+2 cartes en main, mais 1 emplacement de super carte en moins.', color: '#ff7a00', ach: 'noche6' },
+    { id: 'peintre', n: 'Deck Peintre', d: '+2 cartes en main, mais 1 emplacement de super carte en moins.', color: '#ff7a00', win: { deck: 'soles', stake: 2 } },
     { id: 'paillettes', n: 'Deck Paillettes', d: 'Les éditions (Néon, Holo…) sont 3× plus fréquentes.', color: '#ff86de', ach: 'ed1' },
     { id: 'ticket', n: 'Deck Coupon', d: 'Commence avec 2 tickets VIP au hasard.', color: '#18d6ff', ach: 'vouch3' }
   ];
@@ -80,7 +80,21 @@
     listeners.forEach(fn => fn(a, deck));
     return true;
   }
-  const deckUnlocked = d => !d.ach || !!m.ach[d.ach];
+  // A deck is open if it has no condition, its achievement is done, or the required deck was won at the required stake.
+  function deckUnlocked(d) {
+    if (d.ach) return !!m.ach[d.ach];
+    if (d.win) return (m.deckWins[d.win.deck] ?? -1) >= d.win.stake;
+    return true;
+  }
+  // Text shown on a locked deck.
+  function deckReq(d) {
+    if (d.ach) { const a = ACHIEVEMENTS.find(x => x.id === d.ach); return { title: a.n, text: a.d }; }
+    if (d.win) {
+      const src = DECKS.find(x => x.id === d.win.deck), sk = STAKES[d.win.stake];
+      return { title: 'Finir le ' + src.n, text: `Gagne une partie avec le ${src.n} en Mise ${sk.n} (ou plus difficile)` };
+    }
+    return null;
+  }
 
   // Lifetime stats. Every change can unlock cards, so listeners get called.
   function changed() { save(); statListeners.forEach(fn => fn()); }
@@ -93,10 +107,16 @@
   }
 
   function winRun(deckId, stake) {
+    const before = DECKS.filter(deckUnlocked).map(d => d.id);
     m.stats.wins++;
     m.stake = Math.max(m.stake, Math.min(STAKES.length - 1, stake + 1));
     m.deckWins[deckId] = Math.max(m.deckWins[deckId] ?? -1, stake);
     changed();
+    // decks opened by this win
+    DECKS.filter(d => d.win && deckUnlocked(d) && !before.includes(d.id)).forEach(d => {
+      const src = DECKS.find(x => x.id === d.win.deck);
+      listeners.forEach(fn => fn({ n: src.n + ' fini !', d: 'Mise ' + STAKES[d.win.stake].n }, d));
+    });
     unlock('champion');
     if (stake === STAKES.length - 1) unlock('negra');
   }
@@ -104,7 +124,7 @@
   window.Meta = {
     DECKS, ACHIEVEMENTS, STAKES,
     get data() { return m; },
-    save, unlock, deckUnlocked, winRun, add, max, addHand,
+    save, unlock, deckUnlocked, deckReq, winRun, add, max, addHand,
     onUnlock: fn => listeners.push(fn),
     onStats: fn => statListeners.push(fn),
     reset() { m = blank(); save(); }

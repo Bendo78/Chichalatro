@@ -18,7 +18,8 @@ npx serve .
 
 ## What's in a run
 
-- **Decks** (16): Deck Rose is open from the start. The others unlock through achievements (*succès*), for example *Premier apéro* unlocks Deck Teuf (+1 discard).
+- **Decks** (16): Deck Rose and Deck Teuf are open from the start. The others unlock through special achievements (*succès*), or by winning a game with another deck at a given stake (e.g. win with Deck Rose to unlock Deck Patron).
+- **Rounds**: each night, the first two rounds get random meme names (Le Kebab de 2h, Le Tacos 3 Viandes…) and the boss has a special rule (12 bosses: Le Contrôleur RATP, La CAF, Le Mode Avion, Le Ratio, Apagnan…).
 - **Card unlocks**: 38 super cards are open from the first game. Each other card has its own condition (win rounds, beat bosses, play a hand N times, score X in one hand…), harder for rarer cards. Locked cards show in the Collection; click one to see how to unlock it and your progress. The shop only offers unlocked cards.
 - **Difficulty** (*mises*, 8): Blanche → Rose → Orange → Verte → Violette → Bleue → Dorée → Noire. Each adds a rule on top of the previous ones. Winning a full game (beating the boss of night 8) at a stake unlocks the next one.
 - **ChichaClub (shop)**: a row of super cards, Voyance cards and Vinyles; one Ticket VIP per night; a Vinyles shelf; two Pochettes to open. Tickets take effect immediately.
