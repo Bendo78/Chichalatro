@@ -17,7 +17,7 @@
     T => ({ key: 'bosses', n: [1, 3, 7, 12][T - 1], text: n => `Battre ${n} boss` }),
     T => ({ key: 'best', n: [2, 3, 5, 7][T - 1], text: n => `Atteindre la nuit ${n}` }),
     T => ({ key: 'bestHand', n: [400, 2500, 15000, 80000][T - 1], text: n => `Marquer ${fmt(n)} en une seule main` }),
-    T => ({ key: 'maxSoles', n: [12, 22, 35, 55][T - 1], text: n => `Avoir S/ ${n} en même temps` }),
+    T => ({ key: 'maxSoles', n: [12, 22, 35, 55][T - 1], text: n => `Avoir ${n} € en même temps` }),
     T => ({ key: 'recruited', n: [3, 8, 20, 40][T - 1], text: n => `Recruter ${n} super cartes` }),
     T => ({ key: 'cumbias', n: [2, 5, 12, 25][T - 1], text: n => `Écouter ${n} Cumbias` }),
     T => ({ key: 'discards', n: [15, 50, 120, 260][T - 1], text: n => `Défausser ${n} cartes` }),

@@ -1,4 +1,6 @@
-/* Sound effects and a small cumbia loop, all synthesized with Web Audio (no audio files). */
+/* Sound effects and music, synthesized with Web Audio.
+   Music: two original funk / breakbeat tracks (menu and game). If audio files exist at
+   music/menu.mp3 and music/game.mp3 (your own files), they are played instead. */
 (function () {
   let ctx = null, master = null, sfxBus = null, musBus = null;
   const prefs = load();
@@ -16,7 +18,7 @@
     ctx = new AC();
     master = ctx.createGain(); master.gain.value = prefs.vol; master.connect(ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.gain.value = prefs.sfx ? 1 : 0; sfxBus.connect(master);
-    musBus = ctx.createGain(); musBus.gain.value = prefs.music ? 0.32 : 0; musBus.connect(master);
+    musBus = ctx.createGain(); musBus.gain.value = prefs.music ? 0.34 : 0; musBus.connect(master);
     if (prefs.music) Music.start();
     return true;
   }
@@ -29,13 +31,18 @@
     const osc = ctx.createOscillator(), g = ctx.createGain();
     osc.type = o.type || 'square';
     osc.frequency.setValueAtTime(o.f || 440, t);
-    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + (o.dur || .1));
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + (o.slide || o.dur || .1));
     const v = o.vol == null ? .15 : o.vol, dur = o.dur || .1;
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(v, t + (o.attack || .004));
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     let node = osc;
-    if (o.lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; osc.connect(f); node = f; }
+    if (o.lp) {
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = o.q || 1;
+      f.frequency.setValueAtTime(o.lp, t);
+      if (o.lpTo) f.frequency.exponentialRampToValueAtTime(o.lpTo, t + dur);
+      osc.connect(f); node = f;
+    }
     node.connect(g); g.connect(o.bus || sfxBus);
     osc.start(t); osc.stop(t + dur + .02);
   }
@@ -49,7 +56,9 @@
     }
     const t = ctx.currentTime + (o.delay || 0), dur = o.dur || .06;
     const src = ctx.createBufferSource(); src.buffer = noiseBuf;
-    const f = ctx.createBiquadFilter(); f.type = o.ft || 'bandpass'; f.frequency.value = o.f || 3000; f.Q.value = o.q || 1;
+    const f = ctx.createBiquadFilter(); f.type = o.ft || 'bandpass'; f.Q.value = o.q || 1;
+    f.frequency.setValueAtTime(o.f || 3000, t);
+    if (o.sweep) o.sweep.forEach(([fr, at]) => f.frequency.exponentialRampToValueAtTime(fr, t + at));
     const g = ctx.createGain();
     g.gain.setValueAtTime(o.vol || .2, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -85,52 +94,129 @@
     level: () => [0, 5, 9, 12].forEach((s, i) => tone({ f: semi(440, s), type: 'triangle', dur: .15, vol: .12, delay: i * .05 })),
     again: () => tone({ f: 700, to: 1400, type: 'triangle', dur: .12, vol: .1 })
   };
-
   function play(name, arg) { if (!ctx || !prefs.sfx) return; try { S[name] && S[name](arg); } catch (e) { } }
 
-  // ---------- music: a simple chicha-style cumbia loop (Am · G · F · E) ----------
+  // ---------- music ----------
+  const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+  const at = (arr, s) => arr.indexOf(s) >= 0;
+
+  // Drum kit
+  const kick = (d, v) => { tone({ f: 130, to: 42, slide: .12, type: 'sine', dur: .28, vol: .55 * (v || 1), delay: d, bus: musBus }); noise({ f: 900, q: .7, dur: .02, vol: .12, delay: d, bus: musBus }); };
+  const snare = (d, v) => { noise({ f: 1900, q: .6, dur: .16, vol: .32 * (v || 1), delay: d, bus: musBus }); tone({ f: 200, to: 160, type: 'triangle', dur: .08, vol: .16 * (v || 1), delay: d, bus: musBus }); };
+  const hat = (d, v, open) => noise({ f: 8500, ft: 'highpass', dur: open ? .18 : .035, vol: .1 * (v || 1), delay: d, bus: musBus });
+  const scratch = (d, len) => noise({ f: 500, q: 4, dur: len, vol: .26, delay: d, bus: musBus, sweep: [[3200, len * .3], [600, len * .55], [2600, len * .8], [400, len]] });
+
+  // Two original grooves, 32 sixteenth-steps each (2 bars).
+  const TRACKS = {
+    // Menu: punchy funk breakbeat in E dorian, slap bass, chord stabs, scratches, a hook every other loop.
+    menu: {
+      bpm: 106, root: 40, swing: 0,
+      kick: [0, 3, 8, 10, 16, 22, 24, 27], snare: [4, 12, 20, 28], ghost: [7, 15, 23, 26, 31],
+      hatOpen: [14, 30], hat16: [5, 13, 21, 29],
+      bass: { 0: 0, 2: 12, 5: 10, 7: 0, 9: 3, 11: 5, 12: 7, 14: 5, 15: 3, 16: 0, 18: 12, 21: 10, 23: 7, 26: 5, 28: 3, 30: 2 },
+      stabs: { 6: [24, 27, 31, 34, 38], 14: [24, 27, 31, 34, 38], 22: [29, 33, 36, 39, 43], 26: [29, 33, 36, 39, 43] },
+      lead: { 0: 24, 3: 22, 6: 19, 8: 17, 10: 19, 14: 15, 16: 12, 19: 15, 22: 17, 24: 19, 27: 22, 30: 24 },
+      scratchAt: [28]
+    },
+    // Game: laid-back groove in A minor, swung hats, warm electric-piano chords, softer bass.
+    game: {
+      bpm: 94, root: 33, swing: .16,
+      kick: [0, 7, 10, 16, 23, 26], snare: [4, 12, 20, 28], ghost: [15, 31],
+      hatOpen: [30], hat16: [],
+      bass: { 0: 12, 3: 19, 6: 22, 8: 24, 11: 22, 13: 19, 16: 17, 19: 24, 22: 22, 24: 19, 26: 17, 28: 15, 30: 14 },
+      pads: { 0: [36, 39, 43, 46, 50], 16: [41, 44, 48, 51, 55] },
+      lead: null,
+      scratchAt: []
+    }
+  };
+
   const Music = (function () {
-    const BPM = 96, STEP = 60 / BPM / 4; // 16th notes
-    const CHORDS = [[57, 60, 64], [55, 59, 62], [53, 57, 60], [52, 56, 59]]; // Am G F E (MIDI)
-    const BASS = [45, 43, 41, 40];
-    const LEAD = [76, 74, 72, 71, 72, 74, 76, 79, 77, 76, 74, 72, 71, 68, 69, 71];
-    let timer = null, next = 0, step = 0;
-    const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+    let timer = null, next = 0, step = 0, cur = 'menu', loop = 0;
+    let audioEl = null, fileFor = {};
+
     function schedule() {
+      const T = TRACKS[cur], STEP = 60 / T.bpm / 4;
       while (next < ctx.currentTime + .12) {
-        const bar = Math.floor(step / 16) % 4, s = step % 16, d = next - ctx.currentTime;
-        // güiro: long scrape on beats, short scrapes on the "and"
-        if (s % 4 === 0) noise({ f: 5200, q: 2, dur: STEP * 1.6, vol: .1, delay: d, bus: musBus });
-        if (s % 4 === 2 || s % 4 === 3) noise({ f: 5600, q: 2, dur: STEP * .5, vol: .07, delay: d, bus: musBus });
-        // bass: root on 1, fifth on 3
-        if (s === 0 || s === 8) tone({ f: mf(BASS[bar] + (s === 8 ? 7 : 0)), type: 'triangle', dur: STEP * 3, vol: .28, delay: d, bus: musBus });
-        if (s === 6 || s === 14) tone({ f: mf(BASS[bar] + 12), type: 'triangle', dur: STEP * 1.2, vol: .14, delay: d, bus: musBus });
-        // organ stabs on the off-beats
-        if (s % 4 === 2) CHORDS[bar].forEach(m => tone({ f: mf(m + 12), type: 'square', dur: STEP * .9, vol: .03, lp: 1800, delay: d, bus: musBus }));
-        // conga
-        if (s === 4 || s === 12) tone({ f: 180, to: 120, type: 'sine', dur: .12, vol: .22, delay: d, bus: musBus });
-        if (s === 7 || s === 15) tone({ f: 260, to: 200, type: 'sine', dur: .08, vol: .14, delay: d, bus: musBus });
-        // surf-guitar style lead every other loop
-        if (Math.floor(step / 64) % 2 === 1 && s % 2 === 0) {
-          const m = LEAD[(bar * 4 + s / 2) % LEAD.length];
-          if ((s / 2) % 4 !== 3) tone({ f: mf(m), type: 'sawtooth', dur: STEP * 1.8, vol: .035, lp: 2200, delay: d, bus: musBus });
+        const s = step % 32, d = Math.max(0, next - ctx.currentTime) + (s % 2 ? T.swing * STEP : 0);
+        if (s === 0) loop++;
+        if (at(T.kick, s)) kick(d);
+        if (at(T.snare, s)) snare(d);
+        if (at(T.ghost, s)) snare(d, .28);
+        if (s % 2 === 0) hat(d, s % 4 === 2 ? 1 : .6, at(T.hatOpen, s));
+        else if (at(T.hat16, s)) hat(d, .45);
+        if (T.bass[s] != null) {
+          const f = mf(T.root + T.bass[s]);
+          tone({ f, type: 'sawtooth', dur: STEP * 1.7, vol: .22, lp: 1700, lpTo: 260, q: 6, delay: d, bus: musBus });
+          tone({ f: f / 2, type: 'sine', dur: STEP * 1.7, vol: .2, delay: d, bus: musBus });
         }
+        if (T.stabs && T.stabs[s]) T.stabs[s].forEach(n => tone({ f: mf(T.root + n), type: 'square', dur: STEP * 1.1, vol: .028, lp: 2400, lpTo: 900, delay: d, bus: musBus }));
+        if (T.pads && T.pads[s]) T.pads[s].forEach(n => {
+          tone({ f: mf(T.root + n), type: 'sine', dur: STEP * 14, vol: .05, attack: .02, delay: d, bus: musBus });
+          tone({ f: mf(T.root + n + 12), type: 'triangle', dur: STEP * 3, vol: .015, delay: d, bus: musBus });
+        });
+        if (T.lead && loop % 2 === 0 && T.lead[s] != null) tone({ f: mf(T.root + 24 + T.lead[s]), type: 'square', dur: STEP * 1.6, vol: .035, lp: 3000, delay: d, bus: musBus });
+        if (loop % 4 === 3 && at(T.scratchAt, s)) { scratch(d, STEP * 1.6); scratch(d + STEP * 2, STEP * 1.2); }
+        if (cur === 'game' && s % 8 === 0) noise({ f: 3000, q: .3, dur: .05, vol: .015, delay: d + Math.random() * STEP * 4, bus: musBus });
         next += STEP; step++;
       }
     }
+
+    // Your own files: music/menu.mp3 or music/game.mp3 (checked once each).
+    async function hasFile(name) {
+      if (name in fileFor) return fileFor[name];
+      fileFor[name] = null;
+      for (const ext of ['mp3', 'ogg', 'm4a']) {
+        try {
+          const r = await fetch(`music/${name}.${ext}`, { method: 'HEAD', cache: 'no-store' });
+          if (r.ok && !(r.headers.get('content-type') || '').includes('text/html')) { fileFor[name] = `music/${name}.${ext}`; break; }
+        } catch (e) { }
+      }
+      return fileFor[name];
+    }
+    function stopSynth() { clearInterval(timer); timer = null; }
+    function stopFile() { if (audioEl) { audioEl.pause(); audioEl = null; } }
+    function fileVolume() { return prefs.music ? Math.min(1, prefs.vol * .7) : 0; }
+
+    async function start() {
+      if (!ctx || !prefs.music) return;
+      const want = cur, file = await hasFile(want);
+      if (want !== cur || !prefs.music) return;
+      if (file) {
+        stopSynth();
+        if (audioEl && audioEl.dataset.src === file) return;
+        stopFile();
+        audioEl = new Audio(file);
+        audioEl.dataset.src = file;
+        audioEl.loop = true;
+        audioEl.volume = fileVolume();
+        audioEl.play().catch(() => { });
+      } else {
+        stopFile();
+        if (timer) return;
+        next = ctx.currentTime + .08; step = 0; loop = 0;
+        timer = setInterval(schedule, 25);
+      }
+    }
     return {
-      start() { if (!ctx || timer) return; next = ctx.currentTime + .05; timer = setInterval(schedule, 25); },
-      stop() { clearInterval(timer); timer = null; }
+      start,
+      stop() { stopSynth(); stopFile(); },
+      track(name) {
+        if (!TRACKS[name] || name === cur) return;
+        cur = name;
+        stopSynth();
+        if (ctx && prefs.music) start();
+      },
+      volume() { if (audioEl) audioEl.volume = fileVolume(); }
     };
   })();
 
   function set(k, v) {
     prefs[k] = v; save();
     if (!ctx) return;
-    if (k === 'vol') master.gain.value = v;
+    if (k === 'vol') { master.gain.value = v; Music.volume(); }
     if (k === 'sfx') sfxBus.gain.value = v ? 1 : 0;
-    if (k === 'music') { musBus.gain.value = v ? .32 : 0; v ? Music.start() : Music.stop(); }
+    if (k === 'music') { musBus.gain.value = v ? .34 : 0; v ? Music.start() : Music.stop(); }
   }
 
-  window.Sfx = { play, set, prefs, ensure };
+  window.Sfx = { play, set, prefs, ensure, track: n => Music.track(n) };
 })();

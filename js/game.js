@@ -31,7 +31,7 @@
     { id: 'size', n: 'Le RER B', q: 'Incident voyageur, serrez-vous.', d: () => 'Une carte de moins en main' },
     { id: 'five', n: 'La CAF', q: 'Dossier incomplet : il manque des pièces.', d: () => 'Chaque main doit avoir 5 cartes' },
     { id: 'face', n: 'Le Videur', q: 'Pas ce soir, les gars.', d: () => 'Les figures ne rapportent rien' },
-    { id: 'pricey', n: 'Les Impôts', q: 'Prélèvement à la source.', d: () => 'Chaque main jouée coûte S/ 1' }
+    { id: 'pricey', n: 'Les Impôts', q: 'Prélèvement à la source.', d: () => 'Chaque main jouée coûte 1 €' }
   ];
   const EXAMPLES = {
     high: 'A♠ seul', pair: '7♥ 7♣', two: '7♥ 7♣ · 4♦ 4♠', three: 'D♥ D♣ D♦', straight: '5 6 7 8 9',
@@ -182,6 +182,7 @@
   function title() {
     st = null; cardEls.clear(); hideTip();
     Bg.set('menu');
+    Sfx.track('menu');
     const n = DB.cards.length;
     app().innerHTML = `<section class="title">
       ${Art.logo('big')}
@@ -277,7 +278,8 @@
     const ov = modal(`<h2>Options</h2>
       <div class="opts">
         <label class="tg"><input type="checkbox" id="o-sfx" ${P.sfx ? 'checked' : ''}><span>Effets sonores</span></label>
-        <label class="tg"><input type="checkbox" id="o-mus" ${P.music ? 'checked' : ''}><span>Musique cumbia</span></label>
+        <label class="tg"><input type="checkbox" id="o-mus" ${P.music ? 'checked' : ''}><span>Musique</span></label>
+        <p class="opt-hint">Pour jouer ta propre musique, mets tes fichiers dans le dossier <b>music</b> du jeu : <b>menu.mp3</b> pour le menu et <b>game.mp3</b> pour la partie.</p>
         <label>Volume<input type="range" id="o-vol" min="0" max="1" step="0.05" value="${P.vol}"></label>
         <div class="seg"><span>Vitesse du jeu</span>${[1, 2, 4].map(v => `<button class="${OPTS.speed === v ? 'on' : ''}" data-sp="${v}">${v}×</button>`).join('')}</div>
         <label class="tg"><input type="checkbox" id="o-red" ${OPTS.reduced ? 'checked' : ''}><span>Effets réduits (pas de fond animé ni de secousses)</span></label>
@@ -372,6 +374,7 @@
 
   // ---------- run layout ----------
   function runShell() {
+    Sfx.track('game');
     app().innerHTML = `<section class="run" id="run">
       <aside class="side" id="side"></aside>
       <button class="combo-tab" id="combo-tab" aria-label="Voir les combos"><span>COMBOS</span></button>
@@ -411,10 +414,10 @@
   function renderSide() {
     const t = TANDAS[st.tanda];
     let head;
-    if (st.phase === 'shop') head = `<div class="sign"><span class="bulbs"></span><b>BODEGA</b><small>Recrute ta bande !</small></div>`;
+    if (st.phase === 'shop') head = `<div class="sign"><span class="bulbs"></span><b>CHICHACLUB</b><small>Recrute ta bande !</small></div>`;
     else if (st.phase === 'select') head = `<div class="sign pick"><b>Choisis</b><small>ta prochaine manche</small></div>`;
     else head = `<div class="blindbar" style="--bc:${t.col}">${isBoss() ? esc(st.boss.n) : t.n}</div>
-      <div class="blindbox" style="--bc:${t.col}">${chipIcon(t)}<div><small>Objectif minimum</small><b class="tgt">${fmt(st.target)}</b><em>Récompense : <span>${'S/' + rewardFor(st.tanda)}</span></em></div></div>
+      <div class="blindbox" style="--bc:${t.col}">${chipIcon(t)}<div><small>Objectif minimum</small><b class="tgt">${fmt(st.target)}</b><em>Récompense : <span>${rewardFor(st.tanda) + ' €'}</span></em></div></div>
       ${isBoss() ? `<p class="bossrule"><i>« ${esc(st.boss.q)} »</i>${esc(st.boss.desc)}</p>` : ''}`;
     $('#side').innerHTML = `<div class="head">${head}</div>
       <div class="rs"><small>Score<br>de la manche</small><b id="s-score">${fmt(st.score)}</b></div>
@@ -423,7 +426,7 @@
         <button class="btn rosa sq info" id="s-info">Infos<br>run</button>
         <div class="stbox hands"><small>Mains</small><b class="c-blue" id="s-hands">${st.hands}</b></div>
         <div class="stbox disc"><small>Défausses</small><b class="c-red" id="s-disc">${st.discards}</b></div>
-        <div class="stbox soles"><b class="c-gold" id="s-soles">S/ ${st.soles}</b></div>
+        <div class="stbox soles"><b class="c-gold" id="s-soles">${st.soles} €</b></div>
         <button class="btn orange sq opt" id="s-opt">Options</button>
         <div class="stbox noche"><small>Nuit</small><b><span class="c-gold">${st.noche}</span>/${NOCHES}</b></div>
         <div class="stbox round"><small>Manche</small><b class="c-gold">${st.round}</b></div>
@@ -439,7 +442,7 @@
     const hot = st.target && chips * mult >= Math.max(1, st.target - st.score);
     calc.classList.toggle('fire', !!hot && chips > 0);
   }
-  function setSoles(v) { st.soles = v; setStat('s-soles', 'S/ ' + st.soles); Meta.max('maxSoles', st.soles); if (st.soles >= 40) Meta.unlock('rich'); }
+  function setSoles(v) { st.soles = v; setStat('s-soles', st.soles + ' €'); Meta.max('maxSoles', st.soles); if (st.soles >= 40) Meta.unlock('rich'); }
 
   function renderDrawer() {
     $('#drawer').innerHTML = `<h3>Combos de poker</h3><p class="mute">Niveau, valeur de base et nombre de fois jouée cette partie.</p>
@@ -461,7 +464,7 @@
     const box = $('#supers'); if (!box) return;
     box.innerHTML = `<div class="sl">${st.supers.map((sc, i) => superHTML(sc, {
       isNew: sc.uid === newUid,
-      actions: `<span class="sc-act"><button class="mini" data-mv="-1" data-i="${i}" aria-label="Déplacer à gauche">◀</button><button class="mini sell" data-sell="${i}">Vendre S/${Math.max(1, Math.floor(sc.price / 2))}</button><button class="mini" data-mv="1" data-i="${i}" aria-label="Déplacer à droite">▶</button></span>`
+      actions: `<span class="sc-act"><button class="mini" data-mv="-1" data-i="${i}" aria-label="Déplacer à gauche">◀</button><button class="mini sell" data-sell="${i}">Vendre ${Math.max(1, Math.floor(sc.price / 2))} €</button><button class="mini" data-mv="1" data-i="${i}" aria-label="Déplacer à droite">▶</button></span>`
     })).join('')}${Array.from({ length: Math.max(0, st.maxSupers - st.supers.length) }, () => '<span class="slot"></span>').join('')}</div>
       <span class="cnt">${st.supers.length}/${st.maxSupers}</span>`;
     wireSupersIn(box, st.supers);
@@ -506,7 +509,7 @@
         <div class="bl-n">${i === 2 ? esc(st.boss.n) : t.n}</div>
         ${chipIcon(t)}
         ${i === 2 ? `<p class="bl-rule"><i>« ${esc(st.boss.q)} »</i>${esc(st.boss.desc)}</p>` : ''}
-        <div class="bl-t"><small>Objectif minimum</small><b>${fmt(targetFor(st.noche, i))}</b><em>Récompense : S/${rewardFor(i)}</em></div>
+        <div class="bl-t"><small>Objectif minimum</small><b>${fmt(targetFor(st.noche, i))}</b><em>Récompense : ${rewardFor(i)} €</em></div>
         ${skipH && cur ? `<div class="bl-skip"><small>ou</small><button class="btn sm rosa" id="b-skip">Sauter la manche</button><span>Bonus : <b>${skipH.n}</b> +1 niveau</span></div>` : skipH ? `<div class="bl-skip dim"><small>Sauter : ${skipH.n} +1 niv.</small></div>` : ''}
       </div>`;
     }).join('');
@@ -681,7 +684,7 @@
     const hn = $('#handname'); hn.innerHTML = `<b>${ev.hand.n}</b>`; bump(hn);
     await wait(520);
 
-    if (isBoss() && st.boss.id === 'pricey') { setSoles(Math.max(0, st.soles - 1)); pop($('#s-soles'), '-S/1', 'off'); }
+    if (isBoss() && st.boss.id === 'pricey') { setSoles(Math.max(0, st.soles - 1)); pop($('#s-soles'), '-1 €', 'off'); }
     const ctx = { hand: ev.hand, played: sel, scoring: ev.scoring, discardsLeft: st.discards, handsLeft: st.hands, isLastHand: st.hands === 0 };
     st.supers.forEach(sc => sc.onPlayed && sc.onPlayed(ctx, sc));
 
@@ -691,7 +694,7 @@
       if (res.chips) { chips += res.chips; pop(el, '+' + res.chips, 'chips'); Sfx.play('chip', nc++); bump($('#s-chips')); }
       if (res.mult) { mult += res.mult; pop(el, '+' + res.mult + ' Mult', 'mult'); Sfx.play('mult', nm++); bump($('#s-mult')); }
       if (res.xmult) { mult *= res.xmult; pop(el, '×' + Math.round(res.xmult * 100) / 100 + ' Mult', 'xmult'); Sfx.play('xmult'); bump($('#s-mult')); shake(); }
-      if (res.money) { setSoles(st.soles + res.money); pop(el, '+S/' + res.money, 'money'); Sfx.play('money'); }
+      if (res.money) { setSoles(st.soles + res.money); pop(el, '+' + res.money + ' €', 'money'); Sfx.play('money'); }
       setCalc(null, chips, mult);
       return true;
     };
@@ -768,22 +771,22 @@
     const t = TANDAS[st.tanda];
     const lines = [];
     if (rewardFor(st.tanda)) lines.push([`${isBoss() ? st.boss.n : t.n} battu`, rewardFor(st.tanda), 'gold']);
-    if (st.hands) lines.push([`${st.hands} main${st.hands > 1 ? 's' : ''} restante${st.hands > 1 ? 's' : ''} (S/1 chacune)`, st.hands, 'blue']);
+    if (st.hands) lines.push([`${st.hands} main${st.hands > 1 ? 's' : ''} restante${st.hands > 1 ? 's' : ''} (1 € chacune)`, st.hands, 'blue']);
     const interest = Math.min(st.interestMax, Math.floor(st.soles / 5));
-    if (interest) lines.push([`1 d'intérêt par S/5 (max ${st.interestMax})`, interest, 'gold']);
+    if (interest) lines.push([`1 d'intérêt par tranche de 5 € (max ${st.interestMax} €)`, interest, 'gold']);
     st.supers.forEach(sc => { const m = sc.endRound && sc.endRound(st, sc); if (m) lines.push([sc.card.n, m, 'rosa']); });
     const sum = lines.reduce((s, l) => s + l[1], 0);
     await wait(500);
     showCenter(`<div class="cash">
-      <button class="btn xl orange" id="b-cash" disabled>Encaisser S/${sum}</button>
-      <div class="cash-h">${chipIcon(t)}<div><small>Objectif ${fmt(st.target)}</small><b>Score ${fmt(st.score)}</b></div><span class="dots"></span><em>S/${rewardFor(st.tanda)}</em></div>
+      <button class="btn xl orange" id="b-cash" disabled>Encaisser ${sum} €</button>
+      <div class="cash-h">${chipIcon(t)}<div><small>Objectif ${fmt(st.target)}</small><b>Score ${fmt(st.score)}</b></div><span class="dots"></span><em>${rewardFor(st.tanda)} €</em></div>
       <ul id="cash-l"></ul>
     </div>`, 'cashout');
     const ul = $('#cash-l');
     for (const l of lines) {
       await wait(330);
       const li = document.createElement('li');
-      li.innerHTML = `<span>${esc(l[0])}</span><b class="c-${l[2]}">${'S/' + l[1]}</b>`;
+      li.innerHTML = `<span>${esc(l[0])}</span><b class="c-${l[2]}">${l[1] + ' €'}</b>`;
       ul.appendChild(li);
       Sfx.play('money');
     }
@@ -834,12 +837,12 @@
     showCenter(`<div class="shop">
       <div class="shop-btns">
         <button class="btn xl rosa" id="b-next">Manche<br>suivante</button>
-        <button class="btn lg green" id="b-reroll">Relancer<br><b>S/${st.rerollCost}</b></button>
+        <button class="btn lg green" id="b-reroll">Relancer<br><b>${st.rerollCost} €</b></button>
       </div>
-      <div class="offers">${st.offers.map((sc, i) => sc ? `<div class="offer"><span class="price">S/${sc.price}</span>${superHTML(sc)}<button class="btn sm blue buy" data-buy="${i}">Recruter</button></div>` : '<div class="offer sold"><span>Vendu</span></div>').join('')}</div>
+      <div class="offers">${st.offers.map((sc, i) => sc ? `<div class="offer"><span class="price">${sc.price} €</span>${superHTML(sc)}<button class="btn sm blue buy" data-buy="${i}">Recruter</button></div>` : '<div class="offer sold"><span>Vendu</span></div>').join('')}</div>
       <div class="cumbias">${st.cumbias.map((o, i) => {
         const v = handValue(o.h);
-        return `<div class="cumbia${o.sold ? ' sold' : ''}"><span class="price">S/3</span>${vinyl(o.h)}<b>${o.h.n}</b><small>niv.${levelOf(o.h.id)} → ${levelOf(o.h.id) + 1}</small><span class="cmx"><i class="c">+${o.h.lc}</i><i class="m">+${o.h.lm}</i></span>
+        return `<div class="cumbia${o.sold ? ' sold' : ''}"><span class="price">3 €</span>${vinyl(o.h)}<b>${o.h.n}</b><small>niv.${levelOf(o.h.id)} → ${levelOf(o.h.id) + 1}</small><span class="cmx"><i class="c">+${o.h.lc}</i><i class="m">+${o.h.lm}</i></span>
           ${o.sold ? '<span class="tag">Écouté</span>' : `<button class="btn sm blue" data-cum="${i}">Écouter</button>`}</div>`;
       }).join('')}</div>
     </div>`, 'shopc' + (anim ? '' : ' still'));
@@ -938,9 +941,9 @@
     if (!DB.cards.length) return;
     const fresh = Unlocks.check();
     if (fresh.length > 3) {
-      achQueue.push(`<span class="trophy">🃏</span><span><small>Nouvelles cartes</small><b>${fresh.length} super cartes débloquées</b><i>Elles peuvent maintenant sortir dans la Bodega.</i></span>`);
+      achQueue.push(`<span class="trophy">🃏</span><span><small>Nouvelles cartes</small><b>${fresh.length} super cartes débloquées</b><i>Elles peuvent maintenant sortir dans la ChichaClub.</i></span>`);
     } else fresh.forEach(c => {
-      achQueue.push(`<span class="unlk-art">${media(c)}</span><span><small>Carte débloquée</small><b>${esc(c.n)}</b><i>${Supers.TIERS[Supers.TIER_OF[c.r] || 1].n} · peut sortir dans la Bodega</i></span>`);
+      achQueue.push(`<span class="unlk-art">${media(c)}</span><span><small>Carte débloquée</small><b>${esc(c.n)}</b><i>${Supers.TIERS[Supers.TIER_OF[c.r] || 1].n} · peut sortir dans la ChichaClub</i></span>`);
     });
     if (fresh.length) runAch();
   });

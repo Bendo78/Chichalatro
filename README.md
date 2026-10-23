@@ -1,8 +1,12 @@
 # Chichalatro
 
-A poker roguelike in a fluorescent chicha style. Play poker hands to beat score targets over 8 *nuits* (3 *manches* each: L'Apéro, La Soirée, then a Boss with a special rule, like *La Grève Surprise* or *Le RER B*). Between manches, spend Soles in the Bodega to recruit **super cards**, which are your CHICHA TCG cards, and to level up poker hands with *Cumbias* (vinyl records).
+A poker roguelike in a fluorescent chicha style. Play poker hands to beat score targets over 8 *nuits* (3 *manches* each: L'Apéro, La Soirée, then a Boss with a special rule, like *La Grève Surprise* or *Le RER B*). Between manches, spend euros in the ChichaClub to recruit **super cards**, which are your CHICHA TCG cards, and to level up poker hands with *Cumbias* (vinyl records).
 
-All code, art (clown logo, playing cards, card backs), sounds and music are original and made for this project. Sounds and music are synthesized in the browser, so there are no audio files.
+All code, art (clown logo, playing cards, card backs), sounds and music are original and made for this project. Sounds and music are synthesized in the browser: a punchy funk/breakbeat track on the menu and a laid-back groove during the game.
+
+## Your own music
+
+Put audio files you have the rights to in the `music` folder: `menu.mp3` (menu and collection) and `game.mp3` (during a run). `.ogg` and `.m4a` work too. The game plays them instead of its own tracks. These files are ignored by git.
 
 ## Run it
 
@@ -18,7 +22,7 @@ npx serve .
 - **Card unlocks**: 38 super cards are open from the first game. Each other card has its own condition (win rounds, beat bosses, play a hand N times, score X in one hand…), harder for rarer cards. Locked cards show in the Collection; click one to see how to unlock it and your progress. The shop only offers unlocked cards.
 - **Difficulty** (*mises*, 6): Blanche → Rose → Orange → Verte → Bleue → Noire. Each adds a rule on top of the previous ones. Winning a run unlocks the next one.
 - **Combos tab**: the pink tab next to the side panel (or *Infos run*) lists every poker hand with its level, chips × Mult and how often you played it.
-- **Options**: sound effects, cumbia music, volume, game speed (1×/2×/4×), reduced effects.
+- **Options**: sound effects, music, volume, game speed (1×/2×/4×), reduced effects.
 - Keyboard: `Enter` plays the selected hand, `D` discards.
 
 Progress (achievements, decks, difficulty) is saved in the browser.
@@ -48,9 +52,9 @@ Cards are read from the CHICHA TCG Supabase project: table `game`, row `id = 1`.
 - `js/meta.js`: achievements, decks, difficulty levels, lifetime stats
 - `js/unlocks.js`: starter cards and the unlock condition of every other card
 - `js/art.js`: clown logo, playing cards, card backs (SVG)
-- `js/sfx.js`: sound effects and the cumbia loop (Web Audio)
+- `js/sfx.js`: sound effects, the two music tracks, and playback of your own music files
 - `js/bg.js`: animated swirl background (WebGL)
 - `js/game.js`: screens, run flow, animated table, scoring, shop
 - `css/chicha.css`: the look
 
-Debug in the browser console: `ChichaGame.state()`, `ChichaGame.give(20)` (adds Soles).
+Debug in the browser console: `ChichaGame.state()`, `ChichaGame.give(20)` (adds 20 €).

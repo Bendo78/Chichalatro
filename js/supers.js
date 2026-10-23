@@ -11,7 +11,7 @@
     { n: 'Épique', cls: 't3', price: 8, w: 10 },
     { n: 'Légendaire', cls: 't4', price: 11, w: 3 }
   ];
-  const TYPE_FAM = { feu: 'Mult', eau: 'Jetons', foudre: 'Multiplicateur', nature: 'Croissance', psy: 'Esprit', ombre: 'Soles' };
+  const TYPE_FAM = { feu: 'Mult', eau: 'Jetons', foudre: 'Multiplicateur', nature: 'Croissance', psy: 'Esprit', ombre: 'Argent' };
 
   function hash(str) {
     let h = 2166136261;
@@ -51,9 +51,9 @@
       T => ({ text: `+${2 * T} Mult par défausse restante`, afterHand: c => c.discardsLeft ? { mult: 2 * T * c.discardsLeft } : null })
     ],
     ombre: [
-      T => ({ text: `Gagne ${2 * T} Soles en fin de manche`, endRound: () => 2 * T }),
+      T => ({ text: `Gagne ${2 * T} € en fin de manche`, endRound: () => 2 * T }),
       T => ({ text: `${fmtX(1 + 0.5 * T)} Mult sur la dernière main de la manche`, afterHand: c => c.isLastHand ? { xmult: 1 + 0.5 * T } : null }),
-      T => ({ text: `Chaque ♦ joué rapporte ${T >= 3 ? 2 : 1} Sol`, perCard: card => card.suit === 'K' ? { money: T >= 3 ? 2 : 1 } : null })
+      T => ({ text: `Chaque ♦ joué rapporte ${T >= 3 ? 2 : 1} €`, perCard: card => card.suit === 'K' ? { money: T >= 3 ? 2 : 1 } : null })
     ]
   };
 

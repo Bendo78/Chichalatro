@@ -6,7 +6,7 @@
   const DECKS = [
     { id: 'rosa', n: 'Deck Rose', d: 'Le deck de base. Aucun bonus.', color: '#ff2e88' },
     { id: 'fiesta', n: 'Deck Teuf', d: '+1 défausse à chaque manche.', color: '#ff7a00', ach: 'tanda1' },
-    { id: 'soles', n: 'Deck Soles', d: 'Commence avec S/ 14. Intérêts jusqu\'à 7 par manche.', color: '#ffe600', ach: 'rich' },
+    { id: 'soles', n: 'Deck Thune', d: 'Commence avec 14 €. Intérêts jusqu\'à 7 € par manche.', color: '#ffe600', ach: 'rich' },
     { id: 'neon', n: 'Deck Néon', d: '+1 emplacement de super carte.', color: '#18d6ff', ach: 'band' },
     { id: 'cumbia', n: 'Deck Cumbia', d: 'Paire, Double paire et Brelan commencent au niveau 2.', color: '#2bff6e', ach: 'cumbia4' },
     { id: 'jefe', n: 'Deck Patron', d: '+1 main à chaque manche, mais 1 carte de moins en main.', color: '#a43bff', ach: 'noche4' },
@@ -16,7 +16,7 @@
 
   const ACHIEVEMENTS = [
     { id: 'tanda1', n: 'Premier apéro', d: 'Gagner ta première manche' },
-    { id: 'rich', n: 'Riche comme Crésus', d: 'Avoir 40 Soles en même temps' },
+    { id: 'rich', n: 'Riche comme Crésus', d: 'Avoir 40 € en même temps' },
     { id: 'band', n: 'Toute la bande est là', d: 'Avoir 5 super cartes en même temps' },
     { id: 'cumbia4', n: 'DJ de la soirée', d: 'Monter une main au niveau 4' },
     { id: 'noche4', n: 'Nuit blanche', d: 'Atteindre la nuit 4' },

@@ -1,0 +1,9 @@
+Musique personnalisée pour Chichalatro
+
+Mets ici tes propres fichiers audio (que tu as le droit d'utiliser) :
+  menu.mp3  -> joué sur le menu principal et la collection
+  game.mp3  -> joué pendant la partie
+(.ogg et .m4a marchent aussi)
+
+S'il n'y a pas de fichier, le jeu joue ses propres morceaux funk / breakbeat.
+Ces fichiers ne sont pas ajoutés à git (voir .gitignore).
