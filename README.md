@@ -38,7 +38,7 @@ Each type has 3 variants and the card's id picks one, so a card always has the s
 
 ## Card data (Supabase)
 
-Cards are read from the CHICHA TCG Supabase project: table `game`, row `id = 1`. A public read policy is in place, so everyone sees all cards. The game keeps only cards with an illustration, and in the *Legendary Pokemon* series only the unique cards (like *Giratina de Hoshi*). See `usable()` in `js/data.js`. If it is removed, players can still sign in with their CHICHA TCG account, and without either the game uses the 34-card base set in `data/base-cards.js`.
+Cards are read from the CHICHA TCG Supabase project: table `game`, row `id = 1`. A public read policy is in place, so everyone sees all cards. The game keeps only cards with an illustration, and in the *Legendary Pokemon* series only the unique cards (like *Giratina de Hoshi*). See `usable()` in `js/data.js`. If the read policy is removed, players can still sign in with their CHICHA TCG account, and without either the game uses the 34-card base set in `data/base-cards.js`.
 
 ## Files
 
